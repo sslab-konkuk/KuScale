@@ -1,0 +1,1 @@
+docker build -t guswns531/kuscale:base-04 -f ./docker/Dockerfile .

@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kuscale-daemonset
+  namespace: default #kube-system
+spec:
+  selector:
+    matchLabels:
+      name: kuscale-ds
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ""
+      labels:
+        name: kuscale-ds
+    spec:
+      hostNetwork: true  
+      # serviceAccount: kuscale
+      # imagePullSecrets:
+      # - name: regcred
+      containers:
+      - image: guswns531/kuscale:base-08
+        name: kuscale
+        # command: ['./main', '-hostname=$(NODE_NAME)','-m','-t=6000']
+        securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - all
+        volumeMounts:
+          - name: pod-resources
+            mountPath: /var/lib/kubelet/pod-resources
+          - name: device-plugin
+            mountPath: /kubeshare
+          - name: pods
+            mountPath: /var/lib/kubelet/pods
+          - name: cgroup
+            mountPath: /home/cgroup
+          - name: sys-kenel
+            mountPath: /sys/kernel/
+          - name: run-dir
+            mountPath: /var/run
+          - name: host-dev
+            mountPath: /dev
+          - name: host-modules
+            mountPath: /lib/modules
+          - name: host-proc
+            mountPath: /home/proc
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+      volumes:
+        - name: pod-resources
+          hostPath:
+            path: /var/lib/kubelet/pod-resources
+        - name: device-plugin
+          hostPath:
+            path: /kubeshare
+        - name: pods
+          hostPath:
+            path: /var/lib/kubelet/pods
+        - name: cgroup
+          hostPath:
+            path: /sys/fs/cgroup
+        - name: sys-kenel
+          hostPath:
+            path: /sys/kernel/
+        - name: run-dir
+          hostPath:
+            type: Directory
+            path: /var/run
+        - name: host-dev
+          hostPath:
+            type: Directory
+            path: /dev
+        - name: host-modules
+          hostPath:
+            type: Directory
+            path: /lib/modules
+        - name: host-proc
+          hostPath:
+            type: Directory
+            path: /proc
+        
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: kuscale-svc
+  namespace: default
+spec:
+  selector:
+    name: kuscale-ds
+  ports:
+  - name: kuscale-svc
+    protocol: TCP
+    port: 9091
+    targetPort: 9091

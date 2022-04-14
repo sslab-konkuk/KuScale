@@ -1,0 +1,15 @@
+apiVersion: kubeshare.nthu/v1
+kind: SharePod
+metadata:
+  name: pod3
+  annotations:
+    "kubeshare/gpu_request": "0.5"
+    "kubeshare/gpu_limit": "0.5"
+    "kubeshare/gpu_mem": "3145728000"
+spec:
+  terminationGracePeriodSeconds: 0
+  containers:
+  - name: tf
+    image: guswns531/jobs:matrix-002
+    command: ['./matrix', '4096', '20000']
+  restartPolicy: OnFailure

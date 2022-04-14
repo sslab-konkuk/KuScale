@@ -1,0 +1,12 @@
+monitoringperiodsec: 1
+windowsize: 15
+weightv: 10
+algorithm: reg
+average: weighted # normal, weighted, window
+policy: seq # integrated
+cpuprice: 1
+gpuprice: 3
+possiblenodecpu : 500
+possiblenodegpu : 100
+
+
