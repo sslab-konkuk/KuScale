@@ -1,7 +1,7 @@
 apiVersion: kubeshare.nthu/v1
 kind: SharePod
 metadata:
-  name: pod3
+  name: pod4
   annotations:
     "kubeshare/gpu_request": "0.5"
     "kubeshare/gpu_limit": "0.5"

@@ -21,7 +21,7 @@ spec:
       # imagePullSecrets:
       # - name: regcred
       containers:
-      - image: guswns531/kuscale:base-08
+      - image: guswns531/kuscale:base-09
         name: kuscale
         # command: ['./main', '-hostname=$(NODE_NAME)','-m','-t=6000']
         securityContext:

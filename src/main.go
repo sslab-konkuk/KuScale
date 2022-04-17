@@ -210,7 +210,34 @@ func Routine() {
 		pod.CI.RIs[name] = &ri
 	}
     LivePodMap[podName] = pod
+
+	podName= "pod4"
+	pod = PodInfo{
+		podName:      		podName,
+		initFlag : 			false,
+		// cpuPath : 			getCpuPath(podName),
+		gpuPath : 			"/kubeshare/scheduler",
+		// rxPath  : 			path.Join("/home/proc/", getPid(podName), "/net/dev"),
+		// interfaceName : 	getInterfaceName(podName),
+	}
+	pod.CI.RNs = []string{"GPU"}
+	pod.CI.RIs = make(map[string]*ResourceInfo)
+	for _, name := range pod.CI.RNs {
+		ri := ResourceInfo{name : name,}
+		switch name {
+		case "CPU":
+			ri.Init(name, pod.cpuPath, miliCPU, 1)
+		case "GPU":
+			ri.Init(name, pod.gpuPath, miliGPU, 3)
+		}
+		ri.UpdateUsage()
+		pod.CI.RIs[name] = &ri
+	}
+    LivePodMap[podName] = pod
+
+
 	last := 0.
+	last2 := 0.
 	for {
 		// timer1 := time.NewTimer(time.Second * time.Duration(float64(monitoringPeriod)))
 		tt := 1.0
@@ -223,25 +250,26 @@ func Routine() {
 		
 
 		dat, _ := ioutil.ReadFile("/kubeshare/scheduler/total-usage-pod3")
-		var num1 float64
 		read_line := strings.TrimSuffix(string(dat), "\n")
-		num1, _ = strconv.ParseFloat(read_line, 64)
-		// log.Println("Hello: ", read_line,  num1, uint64(num1))
-
+		num1, _ := strconv.ParseFloat(read_line, 64)
 		dd := LivePodMap["pod3"]
-		// dd.CI.RIs["GPU"].acctUsage = append(dd.CI.RIs["GPU"].acctUsage, 0)
 		dd.CI.RIs["GPU"].acctUsage = append(dd.CI.RIs["GPU"].acctUsage, uint64(num1))
 		dd.CI.RIs["GPU"].usage = num1
 		dd.CI.RIs["GPU"].avgUsage = (num1 - last)/1000.
 		last = num1
-
 		log.Println("GPU total usage: ", dd.CI.RIs["GPU"].usage, dd.CI.RIs["GPU"].avgUsage)
-
-
-		// log.Println(dd.CI.RIs["GPU"].acctUsage)
 		LivePodMap["pod3"]= dd
-		// log.Println(LivePodMap)
 
+		dat2, _ := ioutil.ReadFile("/kubeshare/scheduler/total-usage-pod4")
+		read_line2 := strings.TrimSuffix(string(dat2), "\n")
+		num2, _ := strconv.ParseFloat(read_line2, 64)
+		dd2 := LivePodMap["pod4"]
+		dd2.CI.RIs["GPU"].acctUsage = append(dd2.CI.RIs["GPU"].acctUsage, uint64(num2))
+		dd2.CI.RIs["GPU"].usage = num2
+		dd2.CI.RIs["GPU"].avgUsage = (num2 - last2)/1000.
+		last2 = num2
+		log.Println("GPU total usage: ", dd2.CI.RIs["GPU"].usage, dd2.CI.RIs["GPU"].avgUsage)
+		LivePodMap["pod4"]= dd2
 
 		<-timer1.C
 	}
