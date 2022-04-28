@@ -30,7 +30,8 @@ type Exporter struct {
 }	
 
 type ExporterCollector struct {
-	Exporter *Exporter
+	exporter 	*Exporter
+	monitor 	*Monitor
 }
 
 func (ec ExporterCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -38,44 +39,44 @@ func (ec ExporterCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (ec ExporterCollector) collect() error {
-	for _, pod := range LivePodMap {
+	for _, pod := range ec.monitor.livePodMap {
 		name := pod.containerName
 		id := pod.podName
-		node := config.NodeName
+		node := ec.monitor.config.nodeName
 
 		for rn, ri := range pod.CI.RIs {
-			ec.Exporter.Limit.WithLabelValues(append([]string{rn, id, node})...).Add(ri.Limit())
-			ec.Exporter.Usage.WithLabelValues(append([]string{rn, id, node})...).Add(ri.Usage())
-			ec.Exporter.AvgUsage.WithLabelValues(append([]string{rn, id, node})...).Add(ri.AvgUsage())
-			ec.Exporter.AvgAvgUsage.WithLabelValues(append([]string{rn, id, node})...).Add(ri.AvgAvgUsage())
+			ec.exporter.Limit.WithLabelValues(append([]string{rn, id, node})...).Add(ri.Limit())
+			ec.exporter.Usage.WithLabelValues(append([]string{rn, id, node})...).Add(ri.Usage())
+			ec.exporter.AvgUsage.WithLabelValues(append([]string{rn, id, node})...).Add(ri.AvgUsage())
+			ec.exporter.AvgAvgUsage.WithLabelValues(append([]string{rn, id, node})...).Add(ri.AvgAvgUsage())
 		}
 		
-		ec.Exporter.UpdateCount.WithLabelValues(append([]string{name, id, node})...).Add(float64(pod.CI.UpdateCount))	
+		ec.exporter.UpdateCount.WithLabelValues(append([]string{name, id, node})...).Add(float64(pod.CI.UpdateCount))	
 	}
 	return nil
 }
 
 
 func (ec ExporterCollector) Collect(ch chan<- prometheus.Metric) {
-	ec.Exporter.Limit.Reset()
-	ec.Exporter.Usage.Reset()
-	ec.Exporter.AvgUsage.Reset()
-	ec.Exporter.AvgAvgUsage.Reset()
-	ec.Exporter.UpdateCount.Reset()
+	ec.exporter.Limit.Reset()
+	ec.exporter.Usage.Reset()
+	ec.exporter.AvgUsage.Reset()
+	ec.exporter.AvgAvgUsage.Reset()
+	ec.exporter.UpdateCount.Reset()
 	
 	if err := ec.collect(); err != nil {
 		klog.Infof("Error reading container stats: %s", err)
 	} 
 	
-	ec.Exporter.Limit.Collect(ch)
-	ec.Exporter.Usage.Collect(ch)
-	ec.Exporter.AvgUsage.Collect(ch)
-	ec.Exporter.AvgAvgUsage.Collect(ch)
-	ec.Exporter.UpdateCount.Collect(ch)	
+	ec.exporter.Limit.Collect(ch)
+	ec.exporter.Usage.Collect(ch)
+	ec.exporter.AvgUsage.Collect(ch)
+	ec.exporter.AvgAvgUsage.Collect(ch)
+	ec.exporter.UpdateCount.Collect(ch)	
 }
 
 
-func NewExporter(reg prometheus.Registerer) *Exporter {
+func NewExporter(reg prometheus.Registerer, m *Monitor) *Exporter {
 	dm := &Exporter{
 		Limit: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:      "Limit",
@@ -108,18 +109,18 @@ func NewExporter(reg prometheus.Registerer) *Exporter {
 			append([]string{"name", "id", "node"}),
 		),
 	}
-	ec := ExporterCollector{Exporter: dm}
+	ec := ExporterCollector{exporter: dm, monitor: m}
 
 	reg.MustRegister(ec)
 	return dm
 }
 
-func Run(stopCh <-chan struct{}) {
+func ExporterRun(m *Monitor, stopCh <-chan struct{}) {
 
 	klog.Info("Starting Exporter")
 
 	reg := prometheus.NewPedanticRegistry()
-	NewExporter(reg)
+	NewExporter(reg, m)
 	reg.MustRegister(
 		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
 		prometheus.NewGoCollector(),

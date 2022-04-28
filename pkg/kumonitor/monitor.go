@@ -21,140 +21,45 @@ import (
 	"k8s.io/klog"
 )
 
+type PodMap map[string]PodInfo
 
-// func appAction(c *cli.Context) error {
+type Monitor struct {
+	config 					Configuraion
+	livePodMap 				PodMap
+ 	completedPodMap 		PodMap
+} 
 
-// 	config.MonitoringPeriod = 1
-// 	config.WindowSize = 15
-// 	config.NodeName = c.String("hostname")
-// 	config.MonitoringMode = c.Bool("monitoring")
-
-// 	// FS system Watcher 
-// 	// klog.Infof("Starting FS watcher.")
-// 	// watcher, err := newFSWatcher(pluginapi.DevicePluginPath)
-// 	// if err != nil {
-// 	// 	return fmt.Errorf("failed to create FS watcher: %v", err)
-// 	// }
-// 	// defer watcher.Close()
-
-// 	// OS signal Watcher
-// 	// klog.Infof("Starting OS watcher.")
-// 	sigs := newOSWatcher(syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-
-// restart:
-// 	// Start Monitor Thread
-// 	go Routine()
-
-// events:
-// 	for {
-// 		select {
-
-// 		// case event := <-watcher.Events:
-// 		// 	if event.Name == pluginapi.KubeletSocket && event.Op&fsnotify.Create == fsnotify.Create {
-// 		// 		klog.Infof("inotify: %s created, restarting.", pluginapi.KubeletSocket)
-// 		// 		goto restart
-// 		// 	}
-
-// 		// case err := <-watcher.Errors:
-// 		// 	klog.Infof("inotify: %s", err)
-
-// 		case s := <-sigs:
-// 			switch s {
-// 			case syscall.SIGHUP:
-// 				klog.Infof("Received SIGHUP, restarting.")
-// 				goto restart
-// 			default:
-// 				klog.Infof("Received signal \"%v\", shutting down.", s)
-// 				break events
-// 			}
-// 		}
-// 	}
-// 	return nil
-// }
-
-
-func LookUpNewPod (pm PodMap) {
-
-	new, err := getPodMap(pm)
-	if err != nil {
-		klog.Infof("failed to get devices Pod information: %v", err)
-	}
-
-	if new {
-		for name , pod := range pm {
-			// If Pod is a new one , initialize it.
-			if !pod.initFlag {
-
-				// If Cgroup Path doesn't exist, Delete it
-				if !CheckPodExists(pod) {
-					klog.Infof("Not Yet Create ", name)
-					delete(pm, name)
-					continue
-				}
-				 
-				// TODO: WE NEED TO CHOOSE RESOURCES
-				pod.CI.RNs = defaultResources
-				pod.CI.RIs = make(map[string]*ResourceInfo)
-				for _, name := range pod.CI.RNs {
-					ri := ResourceInfo{name : name,}
-					switch name {
-					case "CPU":
-						ri.Init(name, pod.cpuPath, miliCPU, 1)
-					case "GPU":
-						ri.Init(name, pod.gpuPath, miliGPU, 3)
-					case "RX":
-						ri.Init(name, pod.rxPath, miliRX, 0.1)
-					}
-					pod.CI.RIs[name] = &ri
-				}
-
-				pm[name] = pod
-			}
-		}
-	}			
-}
-
-func MonitorPod(pm PodMap) {
+func NewMonitor(
+	monitoringPeriod, windowSize int,
+	nodeName string,
+	monitoringMode bool,
+	exporterMode bool,
+	stopCh <-chan struct{}) *Monitor {
 	
-	for name , pod := range pm {
-
-		// If Resource Path doesn't exist, Delete it
-		if !CheckPodExists(pod) {
-			klog.Infof("Completed ", name)
-			CompletedPodMap[name] = pod
-			delete(pm, name)
-			continue
-		}
-		
-		// Monitor Pod
-		for _, ri := range pod.CI.RIs {
-			ri.UpdateUsage()
-		}
-		
-		pm[name] = pod
-
-		klog.Infof("[",pod.podName,"] : ", pod.CI.RIs["CPU"].Usage(), pod.CI.RIs["CPU"].Limit(), ":", pod.CI.RIs["GPU"].Usage(), pod.CI.RIs["GPU"].Limit(), ":",pod.CI.RIs["RX"].Usage(), pod.CI.RIs["RX"].Limit())
+	klog.Info("Creating New Monitor")
+	config = Configuraion{monitoringPeriod, windowSize, nodeName, monitoringMode}
+	monitor := &Monitor{config: config, livePodMap: make(PodMap), completedPodMap: make(PodMap)}
+	
+	// Run Promethuse Exporter
+	if exporterMode {
+		klog.Info("Creating Exporter")
+		go ExporterRun(monitor, stopCh)
 	}
+
+	return monitor
 }
 
-func Routine() {
 
-	config.MonitoringPeriod = 1
-	config.WindowSize = 15
-	config.NodeName = "node4"
-	config.MonitoringMode = false
+func (m *Monitor) UpdateNewPod() {
 
-	// monitoringPeriod := config.MonitoringPeriod
-	LivePodMap = make(PodMap)
-
+	klog.Info("UpdateNewPod")
+	
 	podName:= "pod3"
 	pod := PodInfo{
 		podName:      		podName,
 		initFlag : 			false,
 		// cpuPath : 			getCpuPath(podName),
 		gpuPath : 			"/kubeshare/scheduler",
-		// rxPath  : 			path.Join("/home/proc/", getPid(podName), "/net/dev"),
-		// interfaceName : 	getInterfaceName(podName),
 	}
 	pod.CI.RNs = []string{"GPU"}
 	pod.CI.RIs = make(map[string]*ResourceInfo)
@@ -169,7 +74,7 @@ func Routine() {
 		ri.UpdateUsage()
 		pod.CI.RIs[name] = &ri
 	}
-    LivePodMap[podName] = pod
+    m.livePodMap[podName] = pod
 
 	podName= "pod4"
 	pod = PodInfo{
@@ -177,8 +82,6 @@ func Routine() {
 		initFlag : 			false,
 		// cpuPath : 			getCpuPath(podName),
 		gpuPath : 			"/kubeshare/scheduler",
-		// rxPath  : 			path.Join("/home/proc/", getPid(podName), "/net/dev"),
-		// interfaceName : 	getInterfaceName(podName),
 	}
 	pod.CI.RNs = []string{"GPU"}
 	pod.CI.RIs = make(map[string]*ResourceInfo)
@@ -193,41 +96,105 @@ func Routine() {
 		ri.UpdateUsage()
 		pod.CI.RIs[name] = &ri
 	}
-    LivePodMap[podName] = pod
+    m.livePodMap[podName] = pod
 
+	// new, err := getPodMap(pm)
+	// if err != nil {
+	// 	klog.Infof("failed to get devices Pod information: %v", err)
+	// }
+
+	// if new {
+	// 	for name , pod := range pm {
+	// 		// If Pod is a new one , initialize it.
+	// 		if !pod.initFlag {
+
+	// 			// If Cgroup Path doesn't exist, Delete it
+	// 			if !CheckPodExists(pod) {
+	// 				klog.Infof("Not Yet Create ", name)
+	// 				delete(pm, name)
+	// 				continue
+	// 			}
+				 
+	// 			// TODO: WE NEED TO CHOOSE RESOURCES
+	// 			pod.CI.RNs = defaultResources
+	// 			pod.CI.RIs = make(map[string]*ResourceInfo)
+	// 			for _, name := range pod.CI.RNs {
+	// 				ri := ResourceInfo{name : name,}
+	// 				switch name {
+	// 				case "CPU":
+	// 					ri.Init(name, pod.cpuPath, miliCPU, 1)
+	// 				case "GPU":
+	// 					ri.Init(name, pod.gpuPath, miliGPU, 3)
+	// 				case "RX":
+	// 					ri.Init(name, pod.rxPath, miliRX, 0.1)
+	// 				}
+	// 				pod.CI.RIs[name] = &ri
+	// 			}
+
+	// 			pm[name] = pod
+	// 		}
+	// 	}
+	// }			
+}
+
+func (m *Monitor) MonitorPod() {
 
 	last := 0.
 	last2 := 0.
 	for {
-		// timer1 := time.NewTimer(time.Second * time.Duration(float64(monitoringPeriod)))
-		tt := 1.0
-		timer1 := time.NewTimer(time.Second * time.Duration(tt))
-
-		// LookUpNewPod(LivePodMap)
-		// MonitorPod(LivePodMap)		
-
+		timer1 := time.NewTimer(time.Second * time.Duration(m.config.monitoringPeriod))
 		dat, _ := ioutil.ReadFile("/kubeshare/scheduler/total-usage-pod3")
 		read_line := strings.TrimSuffix(string(dat), "\n")
 		num1, _ := strconv.ParseFloat(read_line, 64)
-		dd := LivePodMap["pod3"]
+		dd := m.livePodMap["pod3"]
 		dd.CI.RIs["GPU"].acctUsage = append(dd.CI.RIs["GPU"].acctUsage, uint64(num1))
 		dd.CI.RIs["GPU"].usage = num1
 		dd.CI.RIs["GPU"].avgUsage = (num1 - last)/1000.
 		last = num1
-		klog.Infof("GPU total usage: ", dd.CI.RIs["GPU"].usage, dd.CI.RIs["GPU"].avgUsage)
-		LivePodMap["pod3"]= dd
-
+		klog.Infof("GPU total usage: %s %s", dd.CI.RIs["GPU"].usage, dd.CI.RIs["GPU"].avgUsage)
+		m.livePodMap["pod3"]= dd
+	
 		dat2, _ := ioutil.ReadFile("/kubeshare/scheduler/total-usage-pod4")
 		read_line2 := strings.TrimSuffix(string(dat2), "\n")
 		num2, _ := strconv.ParseFloat(read_line2, 64)
-		dd2 := LivePodMap["pod4"]
+		dd2 := m.livePodMap["pod4"]
 		dd2.CI.RIs["GPU"].acctUsage = append(dd2.CI.RIs["GPU"].acctUsage, uint64(num2))
 		dd2.CI.RIs["GPU"].usage = num2
 		dd2.CI.RIs["GPU"].avgUsage = (num2 - last2)/1000.
 		last2 = num2
-		klog.Infof("GPU total usage: ", dd2.CI.RIs["GPU"].usage, dd2.CI.RIs["GPU"].avgUsage)
-		LivePodMap["pod4"]= dd2
-
+		klog.Infof("GPU total usage: %s %s", dd2.CI.RIs["GPU"].usage, dd2.CI.RIs["GPU"].avgUsage)
+		m.livePodMap["pod4"]= dd2
 		<-timer1.C
 	}
+	
+
+	// for name , pod := range m.livePodMap {
+
+	// 	// If Resource Path doesn't exist, Delete it
+	// 	if !CheckPodExists(pod) {
+	// 		klog.Infof("Completed ", name)
+	// 		m.completedPodMap[name] = pod
+	// 		delete(pm, name)
+	// 		continue
+	// 	}
+		
+	// 	// Monitor Pod
+	// 	for _, ri := range pod.CI.RIs {
+	// 		ri.UpdateUsage()
+	// 	}
+		
+	// 	pm[name] = pod
+
+	// 	klog.Infof("[",pod.podName,"] : ", pod.CI.RIs["CPU"].Usage(), pod.CI.RIs["CPU"].Limit(), ":", pod.CI.RIs["GPU"].Usage(), pod.CI.RIs["GPU"].Limit(), ":",pod.CI.RIs["RX"].Usage(), pod.CI.RIs["RX"].Limit())
+	// }
+}
+
+func (m *Monitor) Run(stopCh <-chan struct{}) {
+
+	m.UpdateNewPod()
+	go m.MonitorPod()		
+	
+	klog.Info("Started Monitor")
+	<-stopCh
+	klog.Info("Shutting down Monitor")
 }

@@ -36,7 +36,7 @@ import (
 	"github.com/NTHU-LSALAB/KubeShare/pkg/signals"
 
 	kucontroller "github.com/sslab-konkuk/KuScale/pkg/kucontroller"
-	kuexporter "github.com/sslab-konkuk/KuScale/pkg/kumonitor"
+	kumonitor "github.com/sslab-konkuk/KuScale/pkg/kumonitor"
 
 
 )
@@ -47,17 +47,24 @@ var (
 	masterURL  string
 	kubeconfig string
 	threadNum  int
+
+	monitoringPeriod 	int			
+	windowSize			int			
+	nodeName			string
+	monitoringMode		bool
+	exporterMode		bool
 )
 
 func init() {
-	// config.MonitoringPeriod = flag.Int("MonitoringPeriod", 1, "MonitoringPeriod")
-	// config.WindowSize = flag.Int("WindowSize", 15, "WindowSize")
-	// config.NodeName = flag.String("NodeName", "node4", "NodeName")
-	// config.MonitoringMode = flag.BoolVar("MonitoringMode", true, "MonitoringMode")
-
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
 	flag.IntVar(&threadNum, "threadness", 1, "The number of worker threads.")
+
+	flag.IntVar(&monitoringPeriod, "MonitoringPeriod", 1, "MonitoringPeriod")
+	flag.IntVar(&windowSize, "WindowSize", 15, "WindowSize")
+	flag.StringVar(&nodeName, "NodeName", "node4", "NodeName")
+	flag.BoolVar(&monitoringMode, "MonitoringMode", true, "MonitoringMode")
+	flag.BoolVar(&exporterMode, "exporterMode", true, "exporterMode")
 }
 
 
@@ -68,11 +75,8 @@ func main() {
 	// set up signals so we handle the first shutdown signal gracefully
 	stopCh := signals.SetupSignalHandler()
 
-
-	// Run Promethuse Exporter
-
-	kuexporter.Run(stopCh)
-
+	monitor := kumonitor.NewMonitor(monitoringPeriod, windowSize, nodeName, monitoringMode, exporterMode, stopCh)
+	go monitor.Run(stopCh)
 
 	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
 	if err != nil {

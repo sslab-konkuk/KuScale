@@ -20,10 +20,10 @@ import (
 )
 
 type Configuraion struct {
-	MonitoringPeriod 	int			
-	WindowSize			int			
-	NodeName			string
-	MonitoringMode		bool
+	monitoringPeriod 	int			
+	windowSize			int			
+	nodeName			string
+	monitoringMode		bool
 }
 
 var config Configuraion
@@ -67,7 +67,7 @@ func (ri *ResourceInfo) SetLimit(limit float64) { ri.limit = limit }
 func (ri *ResourceInfo) UpdateUsage() {
 
 	ri.acctUsage = append(ri.acctUsage, ri.GetAcctUsage())
-	ri.usage = CalAvg(ri.acctUsage, 1) / float64(ri.miliScale * config.MonitoringPeriod) // TODO: need to check CPU overflow
+	ri.usage = CalAvg(ri.acctUsage, 1) / float64(ri.miliScale * config.monitoringPeriod) // TODO: need to check CPU overflow
 	ri.avgUsage = (7 * ri.avgUsage + ri.usage) / 8
 	ri.avgAvgUsage = (7 * ri.avgAvgUsage + ri.avgUsage) / 8
 }
@@ -128,9 +128,6 @@ type PodInfo struct {
 	CI 				ContainerInfo
 }
 
-type PodMap map[string]PodInfo
 
-var LivePodMap PodMap
-var CompletedPodMap PodMap
 
 

@@ -24,6 +24,9 @@ VERSION?=1
 
 all: $(TARGET)
 
+run:
+	./bin/kuscale  --kubeconfig /root/.kube/config
+
 kuscale:
 	$(GO_MODULE) $(COMPILE_FLAGS) $(GO) build -o $(BIN_DIR)$@ $(CMD_DIR)$@
 

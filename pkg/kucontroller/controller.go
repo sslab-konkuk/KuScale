@@ -244,7 +244,7 @@ func (c *Controller) syncHandler(key string) error {
 		return nil
 	}
 
-	klog.Infof("syncHandler #1 %s", name)	
+	// klog.Infof("syncHandler #1 %s", name)	
 
 	sharepod, err := c.sharepodsLister.SharePods(namespace).Get(name)
 	if err != nil {
@@ -268,7 +268,7 @@ func (c *Controller) syncHandler(key string) error {
 		return fmt.Errorf(msg)
 	}
 
-	klog.Infof("syncHandler #2 %s", sharepod.ObjectMeta.Name)	
+	// klog.Infof("syncHandler #2 %s", sharepod.ObjectMeta.Name)	
 
 	// err = c.updateSharePodStatus(sharepod, pod, physicalGPUport)
 	// if err != nil {
