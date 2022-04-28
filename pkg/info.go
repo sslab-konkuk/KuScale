@@ -115,9 +115,7 @@ type PodInfo struct {
 	rxPath			string
 
 	pid				string
-	lastIterModStart	int64
 	interfaceName		string
-
 	CI 				ContainerInfo
 }
 

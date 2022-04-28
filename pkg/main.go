@@ -37,12 +37,16 @@ const (
 	podsocketPath        	= "/var/lib/kubelet/pod-resources/kubelet.sock"
 )
 
+type Configuraion struct {
+	MonitoringPeriod 	int			
+	WindowSize			int			
+	NodeName			string
+	MonitoringMode		bool
+}
+
 var config Configuraion
 
 func main() {
-
-	LoadConfig(&config)
-	// PrintConfig(&config)
 
 	c := cli.NewApp()
 	c.Flags= []cli.Flag {
@@ -60,6 +64,8 @@ func main() {
 
 func appAction(c *cli.Context) error {
 
+	config.MonitoringPeriod = 1
+	config.WindowSize = 15
 	config.NodeName = c.String("hostname")
 	config.MonitoringMode = c.Bool("monitoring")
 
