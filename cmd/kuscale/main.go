@@ -33,18 +33,15 @@ import (
 
 	clientset "github.com/NTHU-LSALAB/KubeShare/pkg/client/clientset/versioned"
 	informers "github.com/NTHU-LSALAB/KubeShare/pkg/client/informers/externalversions"
-	kucontroller "github.com/sslab-konkuk/KuScale/pkg/kucontroller"
 	"github.com/NTHU-LSALAB/KubeShare/pkg/signals"
+
+	kucontroller "github.com/sslab-konkuk/KuScale/pkg/kucontroller"
+	kuexporter "github.com/sslab-konkuk/KuScale/pkg/kumonitor"
+
+
 )
 
-type Configuraion struct {
-	MonitoringPeriod 	int			
-	WindowSize			int			
-	NodeName			string
-	MonitoringMode		bool
-}
 
-var config Configuraion
 
 var (
 	masterURL  string
@@ -70,6 +67,12 @@ func main() {
 
 	// set up signals so we handle the first shutdown signal gracefully
 	stopCh := signals.SetupSignalHandler()
+
+
+	// Run Promethuse Exporter
+
+	kuexporter.Run(stopCh)
+
 
 	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
 	if err != nil {

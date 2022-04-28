@@ -11,124 +11,73 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package kuscale
+package kumonitor
 
 import (
-	"fmt"
-	"log"
 	"time"
-	"os"
 	"io/ioutil"
 	"strconv"
 	"strings"
-
-	"syscall"
-	"net/http"
-	// "github.com/fsnotify/fsnotify"
-
-	cli "github.com/urfave/cli/v2"
-	// pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
-	"github.com/prometheus/client_golang/prometheus"
-	// "github.com/prometheus/client_golang/prometheus/promhttp"
-
+	"k8s.io/klog"
 )
 
-const (
-	podsocketPath        	= "/var/lib/kubelet/pod-resources/kubelet.sock"
-)
 
-type Configuraion struct {
-	MonitoringPeriod 	int			
-	WindowSize			int			
-	NodeName			string
-	MonitoringMode		bool
-}
+// func appAction(c *cli.Context) error {
 
-var config Configuraion
+// 	config.MonitoringPeriod = 1
+// 	config.WindowSize = 15
+// 	config.NodeName = c.String("hostname")
+// 	config.MonitoringMode = c.Bool("monitoring")
 
-func main() {
+// 	// FS system Watcher 
+// 	// klog.Infof("Starting FS watcher.")
+// 	// watcher, err := newFSWatcher(pluginapi.DevicePluginPath)
+// 	// if err != nil {
+// 	// 	return fmt.Errorf("failed to create FS watcher: %v", err)
+// 	// }
+// 	// defer watcher.Close()
 
-	c := cli.NewApp()
-	c.Flags= []cli.Flag {
-		&cli.StringFlag{Name: "hostname", Usage: "NodeName"},
-		&cli.BoolFlag{Name: "monitoring", Aliases: []string{"m"}, Usage: "Enable MonitoringMode"},
-	  }
+// 	// OS signal Watcher
+// 	// klog.Infof("Starting OS watcher.")
+// 	sigs := newOSWatcher(syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
-	c.Action = appAction
+// restart:
+// 	// Start Monitor Thread
+// 	go Routine()
 
-	err := c.Run(os.Args)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
+// events:
+// 	for {
+// 		select {
 
-func appAction(c *cli.Context) error {
+// 		// case event := <-watcher.Events:
+// 		// 	if event.Name == pluginapi.KubeletSocket && event.Op&fsnotify.Create == fsnotify.Create {
+// 		// 		klog.Infof("inotify: %s created, restarting.", pluginapi.KubeletSocket)
+// 		// 		goto restart
+// 		// 	}
 
-	config.MonitoringPeriod = 1
-	config.WindowSize = 15
-	config.NodeName = c.String("hostname")
-	config.MonitoringMode = c.Bool("monitoring")
+// 		// case err := <-watcher.Errors:
+// 		// 	klog.Infof("inotify: %s", err)
 
-	// FS system Watcher 
-	// log.Println("Starting FS watcher.")
-	// watcher, err := newFSWatcher(pluginapi.DevicePluginPath)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to create FS watcher: %v", err)
-	// }
-	// defer watcher.Close()
-
-	// OS signal Watcher
-	// log.Println("Starting OS watcher.")
-	sigs := newOSWatcher(syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-
-	// Init  Promethuse Exporter
- 	reg := prometheus.NewPedanticRegistry()
-	NewExporter(reg)
-	reg.MustRegister(
-		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
-		prometheus.NewGoCollector(),
-	)
-	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
-	go http.ListenAndServe(":9091", nil)
-
-		
-restart:
-	// Start Monitor Thread
-	go Routine()
-
-events:
-	for {
-		select {
-
-		// case event := <-watcher.Events:
-		// 	if event.Name == pluginapi.KubeletSocket && event.Op&fsnotify.Create == fsnotify.Create {
-		// 		log.Printf("inotify: %s created, restarting.", pluginapi.KubeletSocket)
-		// 		goto restart
-		// 	}
-
-		// case err := <-watcher.Errors:
-		// 	log.Printf("inotify: %s", err)
-
-		case s := <-sigs:
-			switch s {
-			case syscall.SIGHUP:
-				log.Println("Received SIGHUP, restarting.")
-				goto restart
-			default:
-				log.Printf("Received signal \"%v\", shutting down.", s)
-				break events
-			}
-		}
-	}
-	return nil
-}
+// 		case s := <-sigs:
+// 			switch s {
+// 			case syscall.SIGHUP:
+// 				klog.Infof("Received SIGHUP, restarting.")
+// 				goto restart
+// 			default:
+// 				klog.Infof("Received signal \"%v\", shutting down.", s)
+// 				break events
+// 			}
+// 		}
+// 	}
+// 	return nil
+// }
 
 
 func LookUpNewPod (pm PodMap) {
 
 	new, err := getPodMap(pm)
 	if err != nil {
-		fmt.Printf("failed to get devices Pod information: %v", err)
+		klog.Infof("failed to get devices Pod information: %v", err)
 	}
 
 	if new {
@@ -138,7 +87,7 @@ func LookUpNewPod (pm PodMap) {
 
 				// If Cgroup Path doesn't exist, Delete it
 				if !CheckPodExists(pod) {
-					log.Println("Not Yet Create ", name)
+					klog.Infof("Not Yet Create ", name)
 					delete(pm, name)
 					continue
 				}
@@ -171,7 +120,7 @@ func MonitorPod(pm PodMap) {
 
 		// If Resource Path doesn't exist, Delete it
 		if !CheckPodExists(pod) {
-			log.Println("Completed ", name)
+			klog.Infof("Completed ", name)
 			CompletedPodMap[name] = pod
 			delete(pm, name)
 			continue
@@ -184,11 +133,16 @@ func MonitorPod(pm PodMap) {
 		
 		pm[name] = pod
 
-		log.Println("[",pod.podName,"] : ", pod.CI.RIs["CPU"].Usage(), pod.CI.RIs["CPU"].Limit(), ":", pod.CI.RIs["GPU"].Usage(), pod.CI.RIs["GPU"].Limit(), ":",pod.CI.RIs["RX"].Usage(), pod.CI.RIs["RX"].Limit())
+		klog.Infof("[",pod.podName,"] : ", pod.CI.RIs["CPU"].Usage(), pod.CI.RIs["CPU"].Limit(), ":", pod.CI.RIs["GPU"].Usage(), pod.CI.RIs["GPU"].Limit(), ":",pod.CI.RIs["RX"].Usage(), pod.CI.RIs["RX"].Limit())
 	}
 }
 
 func Routine() {
+
+	config.MonitoringPeriod = 1
+	config.WindowSize = 15
+	config.NodeName = "node4"
+	config.MonitoringMode = false
 
 	// monitoringPeriod := config.MonitoringPeriod
 	LivePodMap = make(PodMap)
@@ -250,10 +204,7 @@ func Routine() {
 		timer1 := time.NewTimer(time.Second * time.Duration(tt))
 
 		// LookUpNewPod(LivePodMap)
-		// MonitorPod(LivePodMap)
-
-
-		
+		// MonitorPod(LivePodMap)		
 
 		dat, _ := ioutil.ReadFile("/kubeshare/scheduler/total-usage-pod3")
 		read_line := strings.TrimSuffix(string(dat), "\n")
@@ -263,7 +214,7 @@ func Routine() {
 		dd.CI.RIs["GPU"].usage = num1
 		dd.CI.RIs["GPU"].avgUsage = (num1 - last)/1000.
 		last = num1
-		log.Println("GPU total usage: ", dd.CI.RIs["GPU"].usage, dd.CI.RIs["GPU"].avgUsage)
+		klog.Infof("GPU total usage: ", dd.CI.RIs["GPU"].usage, dd.CI.RIs["GPU"].avgUsage)
 		LivePodMap["pod3"]= dd
 
 		dat2, _ := ioutil.ReadFile("/kubeshare/scheduler/total-usage-pod4")
@@ -274,7 +225,7 @@ func Routine() {
 		dd2.CI.RIs["GPU"].usage = num2
 		dd2.CI.RIs["GPU"].avgUsage = (num2 - last2)/1000.
 		last2 = num2
-		log.Println("GPU total usage: ", dd2.CI.RIs["GPU"].usage, dd2.CI.RIs["GPU"].avgUsage)
+		klog.Infof("GPU total usage: ", dd2.CI.RIs["GPU"].usage, dd2.CI.RIs["GPU"].avgUsage)
 		LivePodMap["pod4"]= dd2
 
 		<-timer1.C

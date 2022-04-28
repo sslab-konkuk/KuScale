@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package kuscale
+package kumonitor
 
 import (
 	"io/ioutil"
@@ -20,14 +20,14 @@ import (
 	"strconv"
 	"strings"
 	"os"
-	"log"
-	"fmt"
+
+	"k8s.io/klog"
 )
 
 func setFileUint(value uint64, path, file string) {
 	err := ioutil.WriteFile(filepath.Join(path, file), []byte(strconv.FormatUint(uint64(value), 10)), os.FileMode(777)) 
 	if err != nil {
-		log.Println(err, value, path, file)
+		klog.Infof("%s %s %s %s", err, value, path, file)
 	}
 }
 
@@ -48,7 +48,7 @@ func parseUint(s string, base, bitSize int) (uint64) {
 func GetFileParamUint(Path, File string) (uint64) {
 	contents, err := ioutil.ReadFile(filepath.Join(Path, File))
 	if err != nil {
-		fmt.Printf("couldn't GetFileParamUint: %v", err)
+		klog.Infof("couldn't GetFileParamUint: %s", err)
 		return 0
 	}
 	return parseUint(strings.TrimSpace(string(contents)), 10, 64)
@@ -67,7 +67,7 @@ func CheckPodExists(pi PodInfo) bool {
 	} else if !PathExists(filepath.Join(pi.gpuPath, "/total_runtime") ) {
 		return false
 	} else if pi.interfaceName == "" {
-		log.Println("NO interface", pi.interfaceName)
+		klog.Infof("NO interface %s", pi.interfaceName)
 		return false
 	} else {
 		return true
@@ -87,4 +87,59 @@ func CalAvg(array []uint64, windowSize int) (float64){
 	curr := array[monitoringCount]
 	avg := (curr - prev) / uint64(windowSize)
 	return float64(avg)
+}
+
+
+
+
+/* Get AcctUsage Functions */
+
+func GetCpuAcctUsage(pi *PodInfo) (uint64) {
+	return GetFileParamUint(pi.cpuPath, "/cpuacct.usage")
+}
+
+func GetGpuAcctUsage(pi *PodInfo) (uint64) {
+	return GetFileParamUint(pi.gpuPath, "/total_runtime")
+}
+
+// func GetRxAcctUsage(pi *PodInfo) (uint64) {
+// 	its, _ := GetnetworkStats(pi)
+// 	return 8 * its[0].RxBytes
+// }
+
+/* Get Limit Functions */
+
+func GetCpuLimitFromFile(pi *PodInfo) (uint64) {
+	return GetFileParamUint(pi.cpuPath, "/cpu.cfs_quota_us") / 1000
+}
+
+func GetGpuLimitFromFile(pi *PodInfo) (uint64) {
+	return GetFileParamUint(pi.gpuPath, "/quota")
+}
+
+/* Set Limit Functions */
+
+func SetCpuLimit(pi *PodInfo, nextCpu float64) {
+	setFileUint(uint64(nextCpu) * 1000, pi.cpuPath, "/cpu.cfs_quota_us")
+	pi.CI.RIs["CPU"].SetLimit(nextCpu)
+}
+
+func SetGpuLimit(pi *PodInfo, nextGpu float64) {
+	setFileUint(uint64(nextGpu), pi.gpuPath, "/quota")
+	pi.CI.RIs["GPU"].SetLimit(nextGpu)
+}
+
+// func SetRxLimit(pi *PodInfo, nextRx float64) {
+// 	UpdateIngressQdisc(uint64(nextRx) * miliRX, 2 * uint64(nextRx) * miliRX, pi.interfaceName)
+// 	pi.CI.RIs["RX"].SetLimit(nextRx)
+// }
+
+func getPodMap(pm PodMap) (bool, error) {
+	// devicePods, err := getListOfPodsFromKubelet(podsocketPath)
+	// if err != nil {
+	// 	return false, fmt.Errorf("failed to get devices Pod information: %v", err)
+	// }
+	// new := updatePodMap(pm, *devicePods)
+	// return new, nil
+	return false, nil
 }

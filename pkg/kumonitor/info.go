@@ -12,12 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package kuscale
+package kumonitor
 
 import (
-	"log"
 	"math"
+	// "k8s.io/klog"
 )
+
+type Configuraion struct {
+	MonitoringPeriod 	int			
+	WindowSize			int			
+	NodeName			string
+	MonitoringMode		bool
+}
+
+var config Configuraion
 
 const miliCPU = 10000000
 const miliGPU = 10
@@ -70,13 +79,13 @@ func (ri ResourceInfo) GetAcctUsage() (uint64){
 		return GetFileParamUint(ri.path, "/cpuacct.usage")
 	case "GPU":
 		return GetFileParamUint(ri.path, "/total-usage-pod3")
-	case "RX":
-		ifaceStats, err := scanInterfaceStats(ri.path) // TODO : NEED TO READ HOST NET DEV
-		if err != nil {
-			log.Printf("couldn't read network stats: ", err)
-			return 0
-		}
-		return 8 * ifaceStats[0].RxBytes // Make Bits
+	// case "RX":
+	// 	ifaceStats, err := scanInterfaceStats(ri.path) // TODO : NEED TO READ HOST NET DEV
+	// 	if err != nil {
+	// 		klog.Infof("couldn't read network stats: ", err)
+	// 		return 0
+	// 	}
+	// 	return 8 * ifaceStats[0].RxBytes // Make Bits
 	}
 	return 0
 }

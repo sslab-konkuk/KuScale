@@ -11,11 +11,13 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package kuscale
+package kumonitor
 
 import (
-	"log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"net/http"
+	"k8s.io/klog"
 )
 
 
@@ -62,7 +64,7 @@ func (ec ExporterCollector) Collect(ch chan<- prometheus.Metric) {
 	ec.Exporter.UpdateCount.Reset()
 	
 	if err := ec.collect(); err != nil {
-		log.Printf("Error reading container stats: %s", err)
+		klog.Infof("Error reading container stats: %s", err)
 	} 
 	
 	ec.Exporter.Limit.Collect(ch)
@@ -110,4 +112,23 @@ func NewExporter(reg prometheus.Registerer) *Exporter {
 
 	reg.MustRegister(ec)
 	return dm
+}
+
+func Run(stopCh <-chan struct{}) {
+
+	klog.Info("Starting Exporter")
+
+	reg := prometheus.NewPedanticRegistry()
+	NewExporter(reg)
+	reg.MustRegister(
+		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
+		prometheus.NewGoCollector(),
+	)
+	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	go http.ListenAndServe(":9091", nil)
+
+
+	klog.Info("Started Exporter")
+	<-stopCh
+	klog.Info("Shutting down Exporter")
 }

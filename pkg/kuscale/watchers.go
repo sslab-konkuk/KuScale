@@ -39,15 +39,15 @@ func newOSWatcher(sigs ...os.Signal) chan os.Signal {
 	return sigChan
 }
 
-func getPodMap(pm PodMap) (bool, error) {
-	// devicePods, err := getListOfPodsFromKubelet(podsocketPath)
-	// if err != nil {
-	// 	return false, fmt.Errorf("failed to get devices Pod information: %v", err)
-	// }
-	// new := updatePodMap(pm, *devicePods)
-	// return new, nil
-	return false, nil
-}
+// func getPodMap(pm PodMap) (bool, error) {
+// 	// devicePods, err := getListOfPodsFromKubelet(podsocketPath)
+// 	// if err != nil {
+// 	// 	return false, fmt.Errorf("failed to get devices Pod information: %v", err)
+// 	// }
+// 	// new := updatePodMap(pm, *devicePods)
+// 	// return new, nil
+// 	return false, nil
+// }
 
 // func getListOfPodsFromKubelet(socket string) (*podresourcesapi.ListPodResourcesResponse, error) {
 // 	conn, err := connectToServer(socket)
