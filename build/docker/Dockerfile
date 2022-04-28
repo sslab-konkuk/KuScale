@@ -18,7 +18,7 @@ COPY . .
 #     # echo hello
 
 RUN cd src && \
-    make clean && \
+
     make
 
 CMD ["./bin/main"]

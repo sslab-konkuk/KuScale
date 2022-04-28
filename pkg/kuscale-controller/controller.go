@@ -2,8 +2,8 @@ package kuescalecontroller
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
+	// "strconv"
+	// "strings"
 	"time"
 
 	//appsv1 "k8s.io/api/apps/v1"
@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	// "k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime/schema"
+	// "k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -111,7 +111,7 @@ func NewController(
 			klog.Infof("kubeshareInformer UpdateFunc %s  -> %s", old, new)
 			controller.enqueueSharePod(new)
 		},
-		DeleteFunc: controller.handleDeletedSharePod,
+		// DeleteFunc: controller.handleDeletedSharePod,
 	})
 	// Set up an event handler for when Deployment resources change. This
 	// handler will lookup the owner of the given Deployment, and if it is
@@ -265,7 +265,7 @@ func (c *Controller) syncHandler(key string) error {
 		return fmt.Errorf(msg)
 	}
 
-	klog.Infof("syncHandler %s", pod)	
+	// klog.Infof("syncHandler %s", pod)	
 
 	// err = c.updateSharePodStatus(sharepod, pod, physicalGPUport)
 	// if err != nil {
@@ -298,14 +298,6 @@ func (c *Controller) enqueueSharePod(obj interface{}) {
 	c.workqueue.Add(key)
 }
 
-func (c *Controller) handleDeletedSharePod(obj interface{}) {
-	sharepod, ok := obj.(*kubesharev1.SharePod)
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("handleDeletedSharePod: cannot parse object"))
-		return
-	}
-	go c.removeSharePodFromList(sharepod)
-}
 
 func (c *Controller) handleObject(obj interface{}) {
 	var object metav1.Object

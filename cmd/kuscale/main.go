@@ -20,7 +20,7 @@ import (
 	"flag"
 	"os"
 	"time"
-
+	
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeinformers "k8s.io/client-go/informers"
@@ -34,6 +34,7 @@ import (
 	clientset "github.com/NTHU-LSALAB/KubeShare/pkg/client/clientset/versioned"
 	informers "github.com/NTHU-LSALAB/KubeShare/pkg/client/informers/externalversions"
 	kubesharecontroller "github.com/sslab-konkuk/KuScale/pkg/kuescalecontroller"
+	"github.com/NTHU-LSALAB/KubeShare/pkg/signals"
 )
 
 type Configuraion struct {
@@ -52,10 +53,10 @@ var (
 )
 
 func init() {
-	config.MonitoringPeriod = flag.Int("MonitoringPeriod", 1, "MonitoringPeriod")
-	config.WindowSize = flag.Int("WindowSize", 15, "WindowSize")
-	config.NodeName = flag.String("NodeName", "node4", "NodeName")
-	config.MonitoringMode = flag.BoolVar("MonitoringMode", true, "MonitoringMode")
+	// config.MonitoringPeriod = flag.Int("MonitoringPeriod", 1, "MonitoringPeriod")
+	// config.WindowSize = flag.Int("WindowSize", 15, "WindowSize")
+	// config.NodeName = flag.String("NodeName", "node4", "NodeName")
+	// config.MonitoringMode = flag.BoolVar("MonitoringMode", true, "MonitoringMode")
 
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
