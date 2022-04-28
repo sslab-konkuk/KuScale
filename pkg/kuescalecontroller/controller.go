@@ -108,6 +108,7 @@ func NewController(
 	kubeshareInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueSharePod,
 		UpdateFunc: func(old, new interface{}) {
+			klog.Infof("kubeshareInformer UpdateFunc %s  -> %s", old, new)
 			controller.enqueueSharePod(new)
 		},
 		DeleteFunc: controller.handleDeletedSharePod,
@@ -256,92 +257,7 @@ func (c *Controller) syncHandler(key string) error {
 		return nil
 	}
 
-	isGPUPod := false
-	gpu_request := 0.0
-	gpu_limit := 0.0
-	gpu_mem := int64(0)
-	GPUID := ""
-	physicalGPUuuid := ""
-	physicalGPUport := 0
-
-	// GPU Pod needs to be filled with request, limit, memory, and GPUID, or none of them.
-	// If something weird, reject it (record the reason to user then return nil)
-
-	if sharepod.ObjectMeta.Annotations[kubesharev1.KubeShareResourceGPURequest] != "" ||
-		sharepod.ObjectMeta.Annotations[kubesharev1.KubeShareResourceGPULimit] != "" ||
-		sharepod.ObjectMeta.Annotations[kubesharev1.KubeShareResourceGPUMemory] != "" ||
-		sharepod.ObjectMeta.Annotations[kubesharev1.KubeShareResourceGPUID] != "" {
-		var err error
-		gpu_limit, err = strconv.ParseFloat(sharepod.ObjectMeta.Annotations[kubesharev1.KubeShareResourceGPULimit], 64)
-		if err != nil || gpu_limit > 1.0 || gpu_limit < 0.0 {
-			utilruntime.HandleError(fmt.Errorf("SharePod %s/%s gpu_limit value error: %s", sharepod.ObjectMeta.Namespace, sharepod.ObjectMeta.Name, kubesharev1.KubeShareResourceGPULimit))
-			c.recorder.Event(sharepod, corev1.EventTypeWarning, ErrValueError, "Value error: "+kubesharev1.KubeShareResourceGPULimit)
-			return nil
-		}
-		gpu_request, err = strconv.ParseFloat(sharepod.ObjectMeta.Annotations[kubesharev1.KubeShareResourceGPURequest], 64)
-		if err != nil || gpu_request > gpu_limit || gpu_request < 0.0 {
-			utilruntime.HandleError(fmt.Errorf("SharePod %s/%s gpu_request value error: %s", sharepod.ObjectMeta.Namespace, sharepod.ObjectMeta.Name, kubesharev1.KubeShareResourceGPURequest))
-			c.recorder.Event(sharepod, corev1.EventTypeWarning, ErrValueError, "Value error: "+kubesharev1.KubeShareResourceGPURequest)
-			return nil
-		}
-		gpu_mem, err = strconv.ParseInt(sharepod.ObjectMeta.Annotations[kubesharev1.KubeShareResourceGPUMemory], 10, 64)
-		if err != nil || gpu_mem < 0 {
-			utilruntime.HandleError(fmt.Errorf("SharePod %s/%s gpu_mem value error: %s", sharepod.ObjectMeta.Namespace, sharepod.ObjectMeta.Name, kubesharev1.KubeShareResourceGPUMemory))
-			c.recorder.Event(sharepod, corev1.EventTypeWarning, ErrValueError, "Value error: "+kubesharev1.KubeShareResourceGPUMemory)
-			return nil
-		}
-		GPUID = sharepod.ObjectMeta.Annotations[kubesharev1.KubeShareResourceGPUID]
-		if len(GPUID) == 0 {
-			utilruntime.HandleError(fmt.Errorf("SharePod %s/%s GPUID value error: %s", sharepod.ObjectMeta.Namespace, sharepod.ObjectMeta.Name, kubesharev1.KubeShareResourceGPUID))
-			c.recorder.Event(sharepod, corev1.EventTypeWarning, ErrValueError, "Value error: "+kubesharev1.KubeShareResourceGPUID)
-			return nil
-		}
-		isGPUPod = true
-	}
-
-	// sharepod.Print()
-
-	if isGPUPod && sharepod.Status.BoundDeviceID == "" {
-		var errCode int
-		physicalGPUuuid, errCode = c.getPhysicalGPUuuid(sharepod.Spec.NodeName, GPUID, gpu_request, gpu_limit, gpu_mem, key, &physicalGPUport)
-		switch errCode {
-		case 0:
-			klog.Infof("SharePod %s is bound to GPU uuid: %s", key, physicalGPUuuid)
-		case 1:
-			klog.Infof("SharePod %s/%s is waiting for dummy Pod", sharepod.ObjectMeta.Namespace, sharepod.ObjectMeta.Name)
-			return nil
-		case 2:
-			err := fmt.Errorf("Resource exceed!")
-			utilruntime.HandleError(err)
-			c.recorder.Event(sharepod, corev1.EventTypeWarning, ErrValueError, "Resource exceed")
-			return err
-		case 3:
-			err := fmt.Errorf("Pod manager port pool is full!")
-			utilruntime.HandleError(err)
-			return err
-		default:
-			utilruntime.HandleError(fmt.Errorf("Unknown Error"))
-			c.recorder.Event(sharepod, corev1.EventTypeWarning, ErrValueError, "Unknown Error")
-			return nil
-		}
-		sharepod.Status.BoundDeviceID = physicalGPUuuid
-	}
-
 	pod, err := c.podsLister.Pods(sharepod.ObjectMeta.Namespace).Get(sharepod.ObjectMeta.Name)
-
-	// If the resource doesn't exist, we'll create it, but don't create when we knew that Pod will not restart forever
-	if errors.IsNotFound(err) && (sharepod.Status.PodStatus == nil ||
-		sharepod.Spec.RestartPolicy == corev1.RestartPolicyAlways ||
-		(sharepod.Spec.RestartPolicy == corev1.RestartPolicyOnFailure && sharepod.Status.PodStatus.Phase != corev1.PodSucceeded) ||
-		(sharepod.Spec.RestartPolicy == corev1.RestartPolicyNever && (sharepod.Status.PodStatus.Phase != corev1.PodSucceeded && sharepod.Status.PodStatus.Phase != corev1.PodFailed))) {
-		if n, ok := nodesInfo[sharepod.Spec.NodeName]; ok {
-			pod, err = c.kubeclientset.CoreV1().Pods(sharepod.ObjectMeta.Namespace).Create(newPod(sharepod, isGPUPod, n.PodIP, physicalGPUport))
-		}
-	}
-
-	if err != nil {
-		return err
-	}
 
 	if !metav1.IsControlledBy(pod, sharepod) {
 		msg := fmt.Sprintf(MessageResourceExists, pod.Name)
@@ -349,17 +265,14 @@ func (c *Controller) syncHandler(key string) error {
 		return fmt.Errorf(msg)
 	}
 
-	if (pod.Spec.RestartPolicy == corev1.RestartPolicyNever && (pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed)) ||
-		(pod.Spec.RestartPolicy == corev1.RestartPolicyOnFailure && pod.Status.Phase == corev1.PodSucceeded) {
-		go c.removeSharePodFromList(sharepod)
-	}
+	klog.Infof("syncHandler %s", pod)	
 
-	err = c.updateSharePodStatus(sharepod, pod, physicalGPUport)
-	if err != nil {
-		return err
-	}
+	// err = c.updateSharePodStatus(sharepod, pod, physicalGPUport)
+	// if err != nil {
+	// 	return err
+	// }
 
-	c.recorder.Event(sharepod, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
+	// c.recorder.Event(sharepod, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
 	return nil
 }
 

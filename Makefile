@@ -15,7 +15,8 @@
 TARGET=main
 GO=go
 GO_MODULE=GO111MODULE=on
-BIN_DIR=../bin/
+BIN_DIR=./bin/
+CMD_DIR=./bin/
 COMPILE_FLAGS=CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 
 .PHONY: all clean $(TARGET)
@@ -23,7 +24,13 @@ COMPILE_FLAGS=CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 all: $(TARGET)
 
 main:
-	$(GO_MODULE) $(COMPILE_FLAGS) $(GO) build -o $(BIN_DIR)$@ 
+	$(GO_MODULE) $(COMPILE_FLAGS) $(GO) build -o $(BIN_DIR)$@ $(CMD_DIR)$@
+
+kubeshare:
+	kubectl apply -f ./deploy/kubeshare-deploy
+
+kubeshare-down:
+	kubectl delete -f ./deploy/kubeshare-deploy
 
 clean:
 	rm -rf $(BIN_DIR)
