@@ -33,7 +33,7 @@ import (
 
 	clientset "github.com/NTHU-LSALAB/KubeShare/pkg/client/clientset/versioned"
 	informers "github.com/NTHU-LSALAB/KubeShare/pkg/client/informers/externalversions"
-	kubesharecontroller "github.com/sslab-konkuk/KuScale/pkg/kuescalecontroller"
+	kucontroller "github.com/sslab-konkuk/KuScale/pkg/kucontroller"
 	"github.com/NTHU-LSALAB/KubeShare/pkg/signals"
 )
 
@@ -96,7 +96,7 @@ func main() {
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
 	kubeshareInformerFactory := informers.NewSharedInformerFactory(kubeshareClient, time.Second*30)
 
-	controller := kubesharecontroller.NewController(kubeClient, kubeshareClient,
+	controller := kucontroller.NewController(kubeClient, kubeshareClient,
 		kubeInformerFactory.Core().V1().Pods(),
 		kubeshareInformerFactory.Kubeshare().V1().SharePods())
 

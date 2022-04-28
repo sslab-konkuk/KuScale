@@ -1,4 +1,4 @@
-package kuescalecontroller
+package kucontroller
 
 import (
 	"fmt"
@@ -25,7 +25,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	kubesharev1 "github.com/NTHU-LSALAB/KubeShare/pkg/apis/kubeshare/v1"
+	// kubesharev1 "github.com/NTHU-LSALAB/KubeShare/pkg/apis/kubeshare/v1"
 	clientset "github.com/NTHU-LSALAB/KubeShare/pkg/client/clientset/versioned"
 	kubesharescheme "github.com/NTHU-LSALAB/KubeShare/pkg/client/clientset/versioned/scheme"
 	informers "github.com/NTHU-LSALAB/KubeShare/pkg/client/informers/externalversions/kubeshare/v1"
@@ -105,14 +105,14 @@ func NewController(
 
 	klog.Info("Setting up event handlers")
 	// Set up an event handler for when SharePod resources change
-	kubeshareInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: controller.enqueueSharePod,
-		UpdateFunc: func(old, new interface{}) {
-			klog.Infof("kubeshareInformer UpdateFunc %s  -> %s", old, new)
-			controller.enqueueSharePod(new)
-		},
-		// DeleteFunc: controller.handleDeletedSharePod,
-	})
+	// kubeshareInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	// 	AddFunc: controller.enqueueSharePod,
+	// 	UpdateFunc: func(old, new interface{}) {
+	// 		klog.Infof("kubeshareInformer UpdateFunc")
+	// 		controller.enqueueSharePod(new)
+	// 	},
+	// 	// DeleteFunc: controller.handleDeletedSharePod,
+	// })
 	// Set up an event handler for when Deployment resources change. This
 	// handler will lookup the owner of the given Deployment, and if it is
 	// owned by a SharePod resource will enqueue that SharePod resource for
@@ -129,6 +129,7 @@ func NewController(
 				// Two different versions of the same Deployment will always have different RVs.
 				return
 			}
+			klog.Infof("Pod Informer Update Func with change")
 			controller.handleObject(new)
 		},
 		DeleteFunc: controller.handleObject,
@@ -156,7 +157,7 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 
 	// clientHandler in ConfigManager must have correct PodList of every SharePods,
 	// so call it after initNodeClient
-	go StartConfigManager(stopCh, c.kubeclientset)
+	// go StartConfigManager(stopCh, c.kubeclientset)
 
 	klog.Info("Starting workers")
 	// Launch two workers to process SharePod resources
@@ -243,6 +244,8 @@ func (c *Controller) syncHandler(key string) error {
 		return nil
 	}
 
+	klog.Infof("syncHandler #1 %s", name)	
+
 	sharepod, err := c.sharepodsLister.SharePods(namespace).Get(name)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -265,28 +268,28 @@ func (c *Controller) syncHandler(key string) error {
 		return fmt.Errorf(msg)
 	}
 
-	// klog.Infof("syncHandler %s", pod)	
+	klog.Infof("syncHandler #2 %s", sharepod.ObjectMeta.Name)	
 
 	// err = c.updateSharePodStatus(sharepod, pod, physicalGPUport)
 	// if err != nil {
 	// 	return err
 	// }
 
-	// c.recorder.Event(sharepod, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
+	c.recorder.Event(sharepod, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
 	return nil
 }
 
-func (c *Controller) updateSharePodStatus(sharepod *kubesharev1.SharePod, pod *corev1.Pod, port int) error {
-	sharepodCopy := sharepod.DeepCopy()
-	sharepodCopy.Status.PodStatus = pod.Status.DeepCopy()
-	sharepodCopy.Status.PodObjectMeta = pod.ObjectMeta.DeepCopy()
-	if port != 0 {
-		sharepodCopy.Status.PodManagerPort = port
-	}
+// func (c *Controller) updateSharePodStatus(sharepod *kubesharev1.SharePod, pod *corev1.Pod, port int) error {
+// 	sharepodCopy := sharepod.DeepCopy()
+// 	sharepodCopy.Status.PodStatus = pod.Status.DeepCopy()
+// 	sharepodCopy.Status.PodObjectMeta = pod.ObjectMeta.DeepCopy()
+// 	if port != 0 {
+// 		sharepodCopy.Status.PodManagerPort = port
+// 	}
 
-	_, err := c.kubeshareclientset.KubeshareV1().SharePods(sharepodCopy.Namespace).Update(sharepodCopy)
-	return err
-}
+// 	_, err := c.kubeshareclientset.KubeshareV1().SharePods(sharepodCopy.Namespace).Update(sharepodCopy)
+// 	return err
+// }
 
 func (c *Controller) enqueueSharePod(obj interface{}) {
 	var key string
@@ -295,6 +298,7 @@ func (c *Controller) enqueueSharePod(obj interface{}) {
 		utilruntime.HandleError(err)
 		return
 	}
+	klog.Infof("enqueueSharePod = %s", key)
 	c.workqueue.Add(key)
 }
 
@@ -329,6 +333,8 @@ func (c *Controller) handleObject(obj interface{}) {
 			klog.V(4).Infof("ignoring orphaned object '%s' of SharePod '%s'", object.GetSelfLink(), ownerRef.Name)
 			return
 		}
+
+		klog.V(4).Infof("Pod Informer Handler , SharedPod %s", object.GetName())
 
 		c.enqueueSharePod(foo)
 		return
