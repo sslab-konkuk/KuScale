@@ -20,7 +20,7 @@ import (
 	"flag"
 	"os"
 	"time"
-	
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeinformers "k8s.io/client-go/informers"
@@ -37,22 +37,17 @@ import (
 
 	kucontroller "github.com/sslab-konkuk/KuScale/pkg/kucontroller"
 	kumonitor "github.com/sslab-konkuk/KuScale/pkg/kumonitor"
-
-
 )
 
-
-
 var (
-	masterURL  string
-	kubeconfig string
-	threadNum  int
-
-	monitoringPeriod 	int			
-	windowSize			int			
-	nodeName			string
-	monitoringMode		bool
-	exporterMode		bool
+	masterURL        string
+	kubeconfig       string
+	threadNum        int
+	monitoringPeriod int
+	windowSize       int
+	nodeName         string
+	monitoringMode   bool
+	exporterMode     bool
 )
 
 func init() {
@@ -66,7 +61,6 @@ func init() {
 	flag.BoolVar(&monitoringMode, "MonitoringMode", true, "MonitoringMode")
 	flag.BoolVar(&exporterMode, "exporterMode", true, "exporterMode")
 }
-
 
 func main() {
 	klog.InitFlags(nil)
@@ -116,9 +110,6 @@ func main() {
 		klog.Fatalf("Error running controller: %s", err.Error())
 	}
 }
-
-
-
 
 func checkCRD(kubeshareClientSet *clientset.Clientset) bool {
 	_, err := kubeshareClientSet.KubeshareV1().SharePods("").List(metav1.ListOptions{})

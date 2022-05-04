@@ -14,17 +14,17 @@
 package kumonitor
 
 import (
-	"time"
 	"k8s.io/klog"
+	"time"
 )
 
 type PodMap map[string]*PodInfo
 
 type Monitor struct {
-	config 					Configuraion
-	livePodMap 				PodMap
- 	completedPodMap 		PodMap
-} 
+	config          Configuraion
+	livePodMap      PodMap
+	completedPodMap PodMap
+}
 
 func NewMonitor(
 	monitoringPeriod, windowSize int,
@@ -32,11 +32,11 @@ func NewMonitor(
 	monitoringMode bool,
 	exporterMode bool,
 	stopCh <-chan struct{}) *Monitor {
-	
+
 	klog.Info("Creating New Monitor")
 	config = Configuraion{monitoringPeriod, windowSize, nodeName, monitoringMode}
 	monitor := &Monitor{config: config, livePodMap: make(PodMap), completedPodMap: make(PodMap)}
-	
+
 	// Run Promethuse Exporter
 	if exporterMode {
 		klog.Info("Creating Exporter")
@@ -46,16 +46,15 @@ func NewMonitor(
 	return monitor
 }
 
-
 func (m *Monitor) UpdateNewPod() {
 
 	klog.Info("UpdateNewPod")
-	
-	podName:= "pod3"
-    m.livePodMap[podName] = NewPodInfo(podName, []string{"CPU","GPU"})
+
+	podName := "pod3"
+	m.livePodMap[podName] = NewPodInfo(podName, []string{"CPU", "GPU"})
 	podName = "pod4"
-    m.livePodMap[podName] = NewPodInfo(podName, []string{"CPU","GPU"})
-	
+	m.livePodMap[podName] = NewPodInfo(podName, []string{"CPU", "GPU"})
+
 	// if _, ok := m.livePodMap[podName]; ok   {
 	// 	return
 	// }
@@ -75,7 +74,7 @@ func (m *Monitor) UpdateNewPod() {
 	// 				delete(pm, name)
 	// 				continue
 	// 			}
-				 
+
 	// 			// TODO: WE NEED TO CHOOSE RESOURCES
 	// 			pod.CI.RNs = defaultResources
 	// 			pod.CI.RIs = make(map[string]*ResourceInfo)
@@ -95,7 +94,7 @@ func (m *Monitor) UpdateNewPod() {
 	// 			pm[name] = pod
 	// 		}
 	// 	}
-	// }			
+	// }
 }
 
 func (m *Monitor) Monitor() {
@@ -111,7 +110,7 @@ func (m *Monitor) MonitorPod() {
 
 	klog.V(5).Info("MonitorPod Start")
 
-	for name , pod := range m.livePodMap {
+	for name, pod := range m.livePodMap {
 
 		// klog.V(5).Info("MonitorPod Name: ", name)
 
@@ -122,14 +121,14 @@ func (m *Monitor) MonitorPod() {
 			delete(m.livePodMap, name)
 			continue
 		}
-		
+
 		// Monitor Pod
 		for _, ri := range pod.CI.RIs {
 			ri.UpdateUsage(name, m.config.monitoringPeriod)
 		}
-		
+
 		m.livePodMap[name] = pod
-		
+
 		// klog.Info(pod)
 		klog.Info(pod.podName, " ", pod.CI.RIs["CPU"].Usage(), pod.CI.RIs["GPU"].Usage())
 		// klog.V(5).Info("[",pod.podName,"] : ", pod.CI.RIs["CPU"].Usage(), pod.CI.RIs["CPU"].Limit(), ":", pod.CI.RIs["GPU"].Usage(), pod.CI.RIs["GPU"].Limit(), ":",pod.CI.RIs["RX"].Usage(), pod.CI.RIs["RX"].Limit())
@@ -139,11 +138,11 @@ func (m *Monitor) MonitorPod() {
 func (m *Monitor) Run(stopCh <-chan struct{}) {
 
 	m.UpdateNewPod()
-	for name , _ := range m.livePodMap {
-		klog.V(5).Info("Run Name: ", name)
+	for name := range m.livePodMap {
+		klog.V(5).Info("Run Pod Name: ", name)
 	}
-	go m.Monitor()		
-	
+	go m.Monitor()
+
 	klog.Info("Started Monitor")
 	<-stopCh
 	klog.Info("Shutting down Monitor")

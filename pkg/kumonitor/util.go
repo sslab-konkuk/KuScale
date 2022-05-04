@@ -16,22 +16,22 @@ package kumonitor
 
 import (
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"os"
 
 	"k8s.io/klog"
 )
 
 func setFileUint(value uint64, path, file string) {
-	err := ioutil.WriteFile(filepath.Join(path, file), []byte(strconv.FormatUint(uint64(value), 10)), os.FileMode(777)) 
+	err := ioutil.WriteFile(filepath.Join(path, file), []byte(strconv.FormatUint(uint64(value), 10)), os.FileMode(0777))
 	if err != nil {
 		klog.Infof("%s %d %s %s", err, value, path, file)
 	}
 }
 
-func parseUint(s string, base, bitSize int) (uint64) {
+func parseUint(s string, base, bitSize int) uint64 {
 	value, err := strconv.ParseUint(s, base, bitSize)
 	if err != nil {
 		intValue, intErr := strconv.ParseInt(s, base, bitSize)
@@ -45,7 +45,7 @@ func parseUint(s string, base, bitSize int) (uint64) {
 	return value
 }
 
-func GetFileParamUint(Path, File string) (uint64) {
+func GetFileParamUint(Path, File string) uint64 {
 	contents, err := ioutil.ReadFile(filepath.Join(Path, File))
 	if err != nil {
 		klog.Infof("couldn't GetFileParamUint: %s", err)
@@ -62,43 +62,40 @@ func PathExists(path string) bool {
 }
 
 func CheckPodExists(pi *PodInfo) bool {
-	if !PathExists(filepath.Join(pi.cpuPath, "/cpu.cfs_quota_us") ){
+	if !PathExists(filepath.Join(pi.cpuPath, "/cpu.cfs_quota_us")) {
 		return false
-	// } else if !PathExists(filepath.Join(pi.gpuPath, pi.podName) ) {
-	// 	return false
-	// } else if pi.interfaceName == "" {
-	// 	klog.Infof("NO interface %s", pi.interfaceName)
-	// 	return false
+		// } else if !PathExists(filepath.Join(pi.gpuPath, pi.podName) ) {
+		// 	return false
+		// } else if pi.interfaceName == "" {
+		// 	klog.Infof("NO interface %s", pi.interfaceName)
+		// 	return false
 	} else {
 		return true
 	}
 }
 
-func CalAvg(array []uint64, windowSize int) (float64){
-	
+func CalAvg(array []uint64, windowSize int) float64 {
+
 	monitoringCount := len(array) - 1
 	if monitoringCount == 0 {
-		return 0;
+		return 0
 	} else if monitoringCount < windowSize {
 		windowSize = monitoringCount
-	} 
+	}
 
-	prev := array[monitoringCount - windowSize]
+	prev := array[monitoringCount-windowSize]
 	curr := array[monitoringCount]
 	avg := (curr - prev) / uint64(windowSize)
 	return float64(avg)
 }
 
-
-
-
 /* Get AcctUsage Functions */
 
-func (pi *PodInfo) GetCpuAcctUsage() (uint64) {
+func (pi *PodInfo) GetCpuAcctUsage() uint64 {
 	return GetFileParamUint(pi.cpuPath, "/cpuacct.usage")
 }
 
-func GetGpuAcctUsage(gpuPath, podName string) (uint64) {
+func GetGpuAcctUsage(gpuPath, podName string) uint64 {
 
 	path := gpuPath + podName
 	dat, _ := ioutil.ReadFile(path)
@@ -115,18 +112,18 @@ func GetGpuAcctUsage(gpuPath, podName string) (uint64) {
 
 /* Get Limit Functions */
 
-func GetCpuLimitFromFile(pi *PodInfo) (uint64) {
+func GetCpuLimitFromFile(pi *PodInfo) uint64 {
 	return GetFileParamUint(pi.cpuPath, "/cpu.cfs_quota_us") / 1000
 }
 
-func GetGpuLimitFromFile(pi *PodInfo) (uint64) {
+func GetGpuLimitFromFile(pi *PodInfo) uint64 {
 	return GetFileParamUint(pi.gpuPath, "/quota")
 }
 
 /* Set Limit Functions */
 
 func SetCpuLimit(pi *PodInfo, nextCpu float64) {
-	setFileUint(uint64(nextCpu) * 1000, pi.cpuPath, "/cpu.cfs_quota_us")
+	setFileUint(uint64(nextCpu)*1000, pi.cpuPath, "/cpu.cfs_quota_us")
 	pi.CI.RIs["CPU"].SetLimit(nextCpu)
 }
 
@@ -140,3 +137,32 @@ func SetGpuLimit(pi *PodInfo, nextGpu float64) {
 // 	pi.CI.RIs["RX"].SetLimit(nextRx)
 // }
 
+// func writeGpuGeminiConfig() {
+
+// 	gpu_config_f, err := os.Create(SchedulerGPUConfigPath)
+// 	if err != nil {
+// 		klog.Errorf("Error when create config file on path: %s", SchedulerGPUConfigPath)
+// 	}
+
+// 	for i, pod := range pod_configs {
+// 		pod_config := strings.Split(pod, " ")
+// 		if len(pod_config) < 4 {
+// 			break
+// 		}
+
+// 		minutil, maxutil, memlimit := pod_config[1], pod_config[2], pod_config[3]
+// 		def := strings.Split(pod_config[0], "/")
+// 		podname := def[1]
+// 		klog.Infof("pod info[%d]: %s, %s, %s, %s, %s", i, def, podname, minutil, maxutil, memlimit)
+
+// 		//pod key file
+// 		gpu_config_f.WriteString(fmt.Sprintf("[%s]\n", podname))
+// 		gpu_config_f.WriteString(fmt.Sprintf("clientid=%d\n", strings.Count(podlist, ",")))
+// 		gpu_config_f.WriteString(fmt.Sprintf("MinUtil=%s\n", minutil))
+// 		gpu_config_f.WriteString(fmt.Sprintf("MaxUtil=%s\n", maxutil))
+// 		gpu_config_f.WriteString(fmt.Sprintf("MemoryLimit=%s\n", memlimit))
+// 	}
+
+// 	gpu_config_f.Sync()
+// 	gpu_config_f.Close()
+// }
