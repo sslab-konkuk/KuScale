@@ -15,134 +15,136 @@
 package kumonitor
 
 import (
-	"math"
 	"k8s.io/klog"
+	"math"
 )
 
 type Configuraion struct {
-	monitoringPeriod 	int			
-	windowSize			int			
-	nodeName			string
-	monitoringMode		bool
+	monitoringPeriod int
+	windowSize       int
+	nodeName         string
+	monitoringMode   bool
 }
 
 var config Configuraion
 
 const miliCPU = 10000000
 const miliGPU = 10
-const miliRX = 80000 // miliNetworkBits = 10KB
 
-type ResourceName  string
-var defaultResources = []string{"CPU", "GPU", "RX"}
+// const miliRX = 80000 // miliNetworkBits = 10KB
 
+type ResourceName string
+
+// var defaultResources = []string{"CPU", "GPU", "RX"}
 
 // Resource Info are considered by KuScale
 type ResourceInfo struct {
-	name			string
-	path			string
+	name string
+	path string
 
-	miliScale		int
-	price			float64
+	miliScale int
+	price     float64
 
-	acctUsage 		[]uint64
-	limit			float64
-	usage   		float64
-	avgUsage 		float64
-	avgAvgUsage 	float64
+	acctUsage   []uint64
+	limit       float64
+	usage       float64
+	avgUsage    float64
+	avgAvgUsage float64
 }
 
 func (ri *ResourceInfo) Init(name, path string, scale int, price float64) {
-	
-	ri.name, ri.miliScale, ri.path, ri.price  = name, scale, path, price
+
+	ri.name, ri.miliScale, ri.path, ri.price = name, scale, path, price
 	ri.acctUsage = append(ri.acctUsage, 0)
-	ri.limit, ri.usage, ri.avgUsage, ri.avgUsage, ri.avgAvgUsage  = 0, 0, 0, 0, 0
+	ri.limit, ri.usage, ri.avgUsage, ri.avgUsage, ri.avgAvgUsage = 0, 0, 0, 0, 0
 }
 
-func (ri ResourceInfo) Limit() float64 { return ri.limit }
-func (ri ResourceInfo) Usage() float64 { return math.Round(ri.usage) }
-func (ri ResourceInfo) AvgUsage() float64 { return ri.avgUsage }
-func (ri ResourceInfo) AvgAvgUsage() float64 { return ri.avgAvgUsage }
-func (ri ResourceInfo) Price() float64 { return ri.price }
+func (ri ResourceInfo) Limit() float64          { return ri.limit }
+func (ri ResourceInfo) Usage() float64          { return math.Round(ri.usage) }
+func (ri ResourceInfo) AvgUsage() float64       { return ri.avgUsage }
+func (ri ResourceInfo) AvgAvgUsage() float64    { return ri.avgAvgUsage }
+func (ri ResourceInfo) Price() float64          { return ri.price }
 func (ri *ResourceInfo) SetLimit(limit float64) { ri.limit = limit }
 func (ri *ResourceInfo) UpdateUsage(podName string, monitoringPeriod int) {
 
 	ri.acctUsage = append(ri.acctUsage, ri.GetAcctUsage(podName))
-	ri.usage = CalAvg(ri.acctUsage, 1) / float64(ri.miliScale * monitoringPeriod) // TODO: need to check CPU overflow
-	ri.avgUsage = (7 * ri.avgUsage + ri.usage) / 8
-	ri.avgAvgUsage = (7 * ri.avgAvgUsage + ri.avgUsage) / 8
+	ri.usage = CalAvg(ri.acctUsage, 1) / float64(ri.miliScale*monitoringPeriod) // TODO: need to check CPU overflow
+	ri.avgUsage = (7*ri.avgUsage + ri.usage) / 8
+	ri.avgAvgUsage = (7*ri.avgAvgUsage + ri.avgUsage) / 8
 }
 
-func (ri ResourceInfo) GetAcctUsage(podName string) (uint64){
-	
+func (ri ResourceInfo) GetAcctUsage(podName string) uint64 {
+
 	switch ri.name {
 	case "CPU":
 		return GetFileParamUint(ri.path, "/cpuacct.usage")
 	case "GPU":
 		return GetGpuAcctUsage(ri.path, podName)
 		// return GetFileParamUint(ri.path, podName)
-	// case "RX":
-	// 	ifaceStats, err := scanInterfaceStats(ri.path) // TODO : NEED TO READ HOST NET DEV
-	// 	if err != nil {
-	// 		klog.Infof("couldn't read network stats: ", err)
-	// 		return 0
-	// 	}
-	// 	return 8 * ifaceStats[0].RxBytes // Make Bits
+		// case "RX":
+		// 	ifaceStats, err := scanInterfaceStats(ri.path) // TODO : NEED TO READ HOST NET DEV
+		// 	if err != nil {
+		// 		klog.Infof("couldn't read network stats: ", err)
+		// 		return 0
+		// 	}
+		// 	return 8 * ifaceStats[0].RxBytes // Make Bits
 	}
 	return 0
 }
 
 // Container Info are considered by KuScale
 type ContainerInfo struct {
-	
-	// Resource Name
-	RNs 						[]string 
-	// Resource Info
-	RIs							map[string]*ResourceInfo
 
-    // Update Count from KuScale
-	UpdateCount				 	int
+	// Resource Name
+	RNs []string
+	// Resource Info
+	RIs map[string]*ResourceInfo
+
+	// Update Count from KuScale
+	UpdateCount int
 }
 
 var zeroCI = &ContainerInfo{}
+
 func (ci *ContainerInfo) Reset() {
-    *ci = *zeroCI
+	*ci = *zeroCI
 }
 
 // Pod Info are managed by KuScale
 type PodInfo struct {
-	podName      		string
-	namespace 			string
-	containerName 		string
-	initFlag			bool
+	podName string
+	// namespace     string
+	containerName string
+	initFlag      bool
 
-	totalToken			uint64
-	initCpu				uint64
-	initGpu				uint64
-	initRx				uint64
+	// totalToken uint64
+	// initCpu    uint64
+	// initGpu    uint64
+	// initRx     uint64
 
-	cpuPath				string
-	gpuPath				string
-	rxPath				string
+	cpuPath string
+	gpuPath string
+	// rxPath  string
 
-	pid					string
-	interfaceName		string
-	CI 					ContainerInfo
+	// pid           string
+	// interfaceName string
+	CI ContainerInfo
 }
 
-func NewPodInfo (podName string, RNs []string) *PodInfo{
+func NewPodInfo(podName string, RNs []string) *PodInfo {
 
 	klog.V(5).Infof("Makeing New Pod Info %s", podName)
 
 	podInfo := PodInfo{
-		podName:      		podName,
-		initFlag : 			false,
-		cpuPath : 			getCpuPath(podName),
-		gpuPath : 			"/kubeshare/scheduler/total-usage-",
+		podName:  podName,
+		initFlag: false,
+		cpuPath:  getCpuPath(podName),
+		gpuPath:  "/kubeshare/scheduler/total-usage-",
 	}
 	podInfo.CI.RNs = RNs
 	podInfo.CI.RIs = make(map[string]*ResourceInfo)
 	for _, name := range podInfo.CI.RNs {
-		ri := ResourceInfo{name : name,}
+		ri := ResourceInfo{name: name}
 		switch name {
 		case "CPU":
 			ri.Init(name, podInfo.cpuPath, miliCPU, 1)
