@@ -15,13 +15,10 @@ package kumonitor
 
 import (
 	"time"
-	"io/ioutil"
-	"strconv"
-	"strings"
 	"k8s.io/klog"
 )
 
-type PodMap map[string]PodInfo
+type PodMap map[string]*PodInfo
 
 type Monitor struct {
 	config 					Configuraion
@@ -55,49 +52,13 @@ func (m *Monitor) UpdateNewPod() {
 	klog.Info("UpdateNewPod")
 	
 	podName:= "pod3"
-	pod := PodInfo{
-		podName:      		podName,
-		initFlag : 			false,
-		// cpuPath : 			getCpuPath(podName),
-		gpuPath : 			"/kubeshare/scheduler",
-	}
-	pod.CI.RNs = []string{"GPU"}
-	pod.CI.RIs = make(map[string]*ResourceInfo)
-	for _, name := range pod.CI.RNs {
-		ri := ResourceInfo{name : name,}
-		switch name {
-		case "CPU":
-			ri.Init(name, pod.cpuPath, miliCPU, 1)
-		case "GPU":
-			ri.Init(name, pod.gpuPath, miliGPU, 3)
-		}
-		ri.UpdateUsage()
-		pod.CI.RIs[name] = &ri
-	}
-    m.livePodMap[podName] = pod
-
-	podName= "pod4"
-	pod = PodInfo{
-		podName:      		podName,
-		initFlag : 			false,
-		// cpuPath : 			getCpuPath(podName),
-		gpuPath : 			"/kubeshare/scheduler",
-	}
-	pod.CI.RNs = []string{"GPU"}
-	pod.CI.RIs = make(map[string]*ResourceInfo)
-	for _, name := range pod.CI.RNs {
-		ri := ResourceInfo{name : name,}
-		switch name {
-		case "CPU":
-			ri.Init(name, pod.cpuPath, miliCPU, 1)
-		case "GPU":
-			ri.Init(name, pod.gpuPath, miliGPU, 3)
-		}
-		ri.UpdateUsage()
-		pod.CI.RIs[name] = &ri
-	}
-    m.livePodMap[podName] = pod
-
+    m.livePodMap[podName] = NewPodInfo(podName, []string{"CPU","GPU"})
+	podName = "pod4"
+    m.livePodMap[podName] = NewPodInfo(podName, []string{"CPU","GPU"})
+	
+	// if _, ok := m.livePodMap[podName]; ok   {
+	// 	return
+	// }
 	// new, err := getPodMap(pm)
 	// if err != nil {
 	// 	klog.Infof("failed to get devices Pod information: %v", err)
@@ -137,62 +98,51 @@ func (m *Monitor) UpdateNewPod() {
 	// }			
 }
 
-func (m *Monitor) MonitorPod() {
-
-	last := 0.
-	last2 := 0.
+func (m *Monitor) Monitor() {
 	for {
 		timer1 := time.NewTimer(time.Second * time.Duration(m.config.monitoringPeriod))
-		dat, _ := ioutil.ReadFile("/kubeshare/scheduler/total-usage-pod3")
-		read_line := strings.TrimSuffix(string(dat), "\n")
-		num1, _ := strconv.ParseFloat(read_line, 64)
-		dd := m.livePodMap["pod3"]
-		dd.CI.RIs["GPU"].acctUsage = append(dd.CI.RIs["GPU"].acctUsage, uint64(num1))
-		dd.CI.RIs["GPU"].usage = num1
-		dd.CI.RIs["GPU"].avgUsage = (num1 - last)/1000.
-		last = num1
-		klog.Infof("GPU total usage: %s %s", dd.CI.RIs["GPU"].usage, dd.CI.RIs["GPU"].avgUsage)
-		m.livePodMap["pod3"]= dd
-	
-		dat2, _ := ioutil.ReadFile("/kubeshare/scheduler/total-usage-pod4")
-		read_line2 := strings.TrimSuffix(string(dat2), "\n")
-		num2, _ := strconv.ParseFloat(read_line2, 64)
-		dd2 := m.livePodMap["pod4"]
-		dd2.CI.RIs["GPU"].acctUsage = append(dd2.CI.RIs["GPU"].acctUsage, uint64(num2))
-		dd2.CI.RIs["GPU"].usage = num2
-		dd2.CI.RIs["GPU"].avgUsage = (num2 - last2)/1000.
-		last2 = num2
-		klog.Infof("GPU total usage: %s %s", dd2.CI.RIs["GPU"].usage, dd2.CI.RIs["GPU"].avgUsage)
-		m.livePodMap["pod4"]= dd2
+		klog.V(5).Info("Monitor Start")
+		m.MonitorPod()
 		<-timer1.C
 	}
-	
+}
 
-	// for name , pod := range m.livePodMap {
+func (m *Monitor) MonitorPod() {
 
-	// 	// If Resource Path doesn't exist, Delete it
-	// 	if !CheckPodExists(pod) {
-	// 		klog.Infof("Completed ", name)
-	// 		m.completedPodMap[name] = pod
-	// 		delete(pm, name)
-	// 		continue
-	// 	}
+	klog.V(5).Info("MonitorPod Start")
+
+	for name , pod := range m.livePodMap {
+
+		// klog.V(5).Info("MonitorPod Name: ", name)
+
+		// If Resource Path doesn't exist, Delete it
+		if !CheckPodExists(pod) {
+			klog.Info("Completed ", name)
+			m.completedPodMap[name] = pod
+			delete(m.livePodMap, name)
+			continue
+		}
 		
-	// 	// Monitor Pod
-	// 	for _, ri := range pod.CI.RIs {
-	// 		ri.UpdateUsage()
-	// 	}
+		// Monitor Pod
+		for _, ri := range pod.CI.RIs {
+			ri.UpdateUsage(name, m.config.monitoringPeriod)
+		}
 		
-	// 	pm[name] = pod
-
-	// 	klog.Infof("[",pod.podName,"] : ", pod.CI.RIs["CPU"].Usage(), pod.CI.RIs["CPU"].Limit(), ":", pod.CI.RIs["GPU"].Usage(), pod.CI.RIs["GPU"].Limit(), ":",pod.CI.RIs["RX"].Usage(), pod.CI.RIs["RX"].Limit())
-	// }
+		m.livePodMap[name] = pod
+		
+		// klog.Info(pod)
+		klog.Info(pod.podName, " ", pod.CI.RIs["CPU"].Usage(), pod.CI.RIs["GPU"].Usage())
+		// klog.V(5).Info("[",pod.podName,"] : ", pod.CI.RIs["CPU"].Usage(), pod.CI.RIs["CPU"].Limit(), ":", pod.CI.RIs["GPU"].Usage(), pod.CI.RIs["GPU"].Limit(), ":",pod.CI.RIs["RX"].Usage(), pod.CI.RIs["RX"].Limit())
+	}
 }
 
 func (m *Monitor) Run(stopCh <-chan struct{}) {
 
 	m.UpdateNewPod()
-	go m.MonitorPod()		
+	for name , _ := range m.livePodMap {
+		klog.V(5).Info("Run Name: ", name)
+	}
+	go m.Monitor()		
 	
 	klog.Info("Started Monitor")
 	<-stopCh

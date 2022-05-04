@@ -16,7 +16,7 @@ package kumonitor
 
 import (
 	"math"
-	// "k8s.io/klog"
+	"k8s.io/klog"
 )
 
 type Configuraion struct {
@@ -64,21 +64,22 @@ func (ri ResourceInfo) AvgUsage() float64 { return ri.avgUsage }
 func (ri ResourceInfo) AvgAvgUsage() float64 { return ri.avgAvgUsage }
 func (ri ResourceInfo) Price() float64 { return ri.price }
 func (ri *ResourceInfo) SetLimit(limit float64) { ri.limit = limit }
-func (ri *ResourceInfo) UpdateUsage() {
+func (ri *ResourceInfo) UpdateUsage(podName string, monitoringPeriod int) {
 
-	ri.acctUsage = append(ri.acctUsage, ri.GetAcctUsage())
-	ri.usage = CalAvg(ri.acctUsage, 1) / float64(ri.miliScale * config.monitoringPeriod) // TODO: need to check CPU overflow
+	ri.acctUsage = append(ri.acctUsage, ri.GetAcctUsage(podName))
+	ri.usage = CalAvg(ri.acctUsage, 1) / float64(ri.miliScale * monitoringPeriod) // TODO: need to check CPU overflow
 	ri.avgUsage = (7 * ri.avgUsage + ri.usage) / 8
 	ri.avgAvgUsage = (7 * ri.avgAvgUsage + ri.avgUsage) / 8
 }
 
-func (ri ResourceInfo) GetAcctUsage() (uint64){
+func (ri ResourceInfo) GetAcctUsage(podName string) (uint64){
 	
 	switch ri.name {
 	case "CPU":
 		return GetFileParamUint(ri.path, "/cpuacct.usage")
 	case "GPU":
-		return GetFileParamUint(ri.path, "/total-usage-pod3")
+		return GetGpuAcctUsage(ri.path, podName)
+		// return GetFileParamUint(ri.path, podName)
 	// case "RX":
 	// 	ifaceStats, err := scanInterfaceStats(ri.path) // TODO : NEED TO READ HOST NET DEV
 	// 	if err != nil {
@@ -109,25 +110,49 @@ func (ci *ContainerInfo) Reset() {
 
 // Pod Info are managed by KuScale
 type PodInfo struct {
-	podName      	string
-	namespace 		string
-	containerName 	string
-	initFlag		bool
+	podName      		string
+	namespace 			string
+	containerName 		string
+	initFlag			bool
 
-	totalToken		uint64
-	initCpu			uint64
-	initGpu			uint64
-	initRx			uint64
+	totalToken			uint64
+	initCpu				uint64
+	initGpu				uint64
+	initRx				uint64
 
-	cpuPath			string
-	gpuPath			string
-	rxPath			string
+	cpuPath				string
+	gpuPath				string
+	rxPath				string
 
-	pid				string
+	pid					string
 	interfaceName		string
-	CI 				ContainerInfo
+	CI 					ContainerInfo
 }
 
+func NewPodInfo (podName string, RNs []string) *PodInfo{
 
+	klog.V(5).Infof("Makeing New Pod Info %s", podName)
 
+	podInfo := PodInfo{
+		podName:      		podName,
+		initFlag : 			false,
+		cpuPath : 			getCpuPath(podName),
+		gpuPath : 			"/kubeshare/scheduler/total-usage-",
+	}
+	podInfo.CI.RNs = RNs
+	podInfo.CI.RIs = make(map[string]*ResourceInfo)
+	for _, name := range podInfo.CI.RNs {
+		ri := ResourceInfo{name : name,}
+		switch name {
+		case "CPU":
+			ri.Init(name, podInfo.cpuPath, miliCPU, 1)
+		case "GPU":
+			ri.Init(name, podInfo.gpuPath, miliGPU, 3)
+		}
+		ri.UpdateUsage(name, 1) //TODO: Need Change 1
+		podInfo.CI.RIs[name] = &ri
+	}
 
+	klog.V(5).Infof("Made New Pod Info %s", podName)
+	return &podInfo
+}

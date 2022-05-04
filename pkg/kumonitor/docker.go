@@ -1,48 +1,45 @@
-package kuscale
+package kumonitor
 
-// import (
-// 	"context"
+import (
+	"context"
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/client"
+	"k8s.io/klog"
+)
 
-// 	"strconv"
-// 	"bufio"
-// 	"os"
-// 	"log"
-// 	"strings"
+func getCpuPath(podName string) string {
+	ctx := context.Background()
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		panic(err)
+	}
+	filterlabel := "io.kubernetes.pod.name=" + podName
+	filters := filters.NewArgs()
+	filters.Add("label", filterlabel)
 
-// 	"github.com/docker/docker/api/types"
-// 	"github.com/docker/docker/api/types/filters"
-// 	"github.com/docker/docker/client"
-// )
+	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{Filters: filters})
+	if err != nil {
+		panic(err)
+	}
 
-// func getCpuPath(podName string) string {
-// 	ctx := context.Background()
-// 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	filterlabel := "io.kubernetes.pod.name=" + podName
-// 	filters := filters.NewArgs()
-// 	filters.Add("label", filterlabel)
-
-// 	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{Filters: filters})
-// 	if err != nil {
-// 		panic(err)
-// 	}
-
-// 	if len(containers) == 0 {
-// 		return ""
-// 	}
+	if len(containers) == 0 {
+		klog.V(5).Info("getCPUPath , no path ", podName)
+		return ""
+	}
 	
-// 	data, err := cli.ContainerInspect(ctx, containers[0].ID)
+	data, err := cli.ContainerInspect(ctx, containers[0].ID)
 
-// 	if err != nil {
-// 		panic(err)
-// 	}
+	if err != nil {
+		panic(err)
+	}
 	
-// 	cgroupPath := "/home/cgroup/cpu/kubepods.slice/kubepods-besteffort.slice/" + data.HostConfig.CgroupParent + "/docker-" + containers[0].ID + ".scope"
-	
-// 	return cgroupPath
-// }
+	cgroupPath := "/home/cgroup/cpu/kubepods.slice/kubepods-besteffort.slice/" + data.HostConfig.CgroupParent + "/docker-" + containers[0].ID + ".scope"
+
+	klog.V(5).Info("getCPUPath ", podName, " ", cgroupPath)
+
+	return cgroupPath
+}
 
 // func getGpuPath(podName string) string {
 // 	ctx := context.Background()

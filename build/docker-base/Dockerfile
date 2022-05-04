@@ -14,8 +14,8 @@ RUN apt update && \
     apt install -y g++ wget make iproute2 curl kmod && \
     wget -nv -O - https://storage.googleapis.com/golang/go${GOLANG_VERSION}.linux-amd64.tar.gz | tar -C /usr/local -xz && \
     # cd src && \
-    # make
-    echo hello
+    make
+    # echo hello
 
 CMD ["./bin/main"]
 

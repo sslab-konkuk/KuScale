@@ -27,7 +27,7 @@ import (
 func setFileUint(value uint64, path, file string) {
 	err := ioutil.WriteFile(filepath.Join(path, file), []byte(strconv.FormatUint(uint64(value), 10)), os.FileMode(777)) 
 	if err != nil {
-		klog.Infof("%s %s %s %s", err, value, path, file)
+		klog.Infof("%s %d %s %s", err, value, path, file)
 	}
 }
 
@@ -61,14 +61,14 @@ func PathExists(path string) bool {
 	return true
 }
 
-func CheckPodExists(pi PodInfo) bool {
+func CheckPodExists(pi *PodInfo) bool {
 	if !PathExists(filepath.Join(pi.cpuPath, "/cpu.cfs_quota_us") ){
 		return false
-	} else if !PathExists(filepath.Join(pi.gpuPath, "/total_runtime") ) {
-		return false
-	} else if pi.interfaceName == "" {
-		klog.Infof("NO interface %s", pi.interfaceName)
-		return false
+	// } else if !PathExists(filepath.Join(pi.gpuPath, pi.podName) ) {
+	// 	return false
+	// } else if pi.interfaceName == "" {
+	// 	klog.Infof("NO interface %s", pi.interfaceName)
+	// 	return false
 	} else {
 		return true
 	}
@@ -94,12 +94,18 @@ func CalAvg(array []uint64, windowSize int) (float64){
 
 /* Get AcctUsage Functions */
 
-func GetCpuAcctUsage(pi *PodInfo) (uint64) {
+func (pi *PodInfo) GetCpuAcctUsage() (uint64) {
 	return GetFileParamUint(pi.cpuPath, "/cpuacct.usage")
 }
 
-func GetGpuAcctUsage(pi *PodInfo) (uint64) {
-	return GetFileParamUint(pi.gpuPath, "/total_runtime")
+func GetGpuAcctUsage(gpuPath, podName string) (uint64) {
+
+	path := gpuPath + podName
+	dat, _ := ioutil.ReadFile(path)
+	read_line := strings.TrimSuffix(string(dat), "\n")
+	num1, _ := strconv.ParseFloat(read_line, 64)
+	return uint64(num1)
+	// return GetFileParamUint(pi.gpuPath, pi.podName)
 }
 
 // func GetRxAcctUsage(pi *PodInfo) (uint64) {
@@ -134,12 +140,3 @@ func SetGpuLimit(pi *PodInfo, nextGpu float64) {
 // 	pi.CI.RIs["RX"].SetLimit(nextRx)
 // }
 
-func getPodMap(pm PodMap) (bool, error) {
-	// devicePods, err := getListOfPodsFromKubelet(podsocketPath)
-	// if err != nil {
-	// 	return false, fmt.Errorf("failed to get devices Pod information: %v", err)
-	// }
-	// new := updatePodMap(pm, *devicePods)
-	// return new, nil
-	return false, nil
-}
