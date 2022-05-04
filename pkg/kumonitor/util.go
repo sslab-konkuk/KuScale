@@ -124,12 +124,12 @@ func GetGpuLimitFromFile(pi *PodInfo) uint64 {
 
 func SetCpuLimit(pi *PodInfo, nextCpu float64) {
 	setFileUint(uint64(nextCpu)*1000, pi.cpuPath, "/cpu.cfs_quota_us")
-	pi.CI.RIs["CPU"].SetLimit(nextCpu)
+	pi.RIs["CPU"].SetLimit(nextCpu)
 }
 
 func SetGpuLimit(pi *PodInfo, nextGpu float64) {
 	setFileUint(uint64(nextGpu), pi.gpuPath, "/quota")
-	pi.CI.RIs["GPU"].SetLimit(nextGpu)
+	pi.RIs["GPU"].SetLimit(nextGpu)
 }
 
 // func SetRxLimit(pi *PodInfo, nextRx float64) {

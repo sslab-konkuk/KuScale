@@ -23,10 +23,9 @@ type Configuraion struct {
 	monitoringPeriod int
 	windowSize       int
 	nodeName         string
-	monitoringMode   bool
+	monitoring       bool
+	exportMode       bool
 }
-
-var config Configuraion
 
 const miliCPU = 10000000
 const miliGPU = 10
@@ -92,30 +91,12 @@ func (ri ResourceInfo) GetAcctUsage(podName string) uint64 {
 	return 0
 }
 
-// Container Info are considered by KuScale
-type ContainerInfo struct {
-
-	// Resource Name
-	RNs []string
-	// Resource Info
-	RIs map[string]*ResourceInfo
-
-	// Update Count from KuScale
-	UpdateCount int
-}
-
-var zeroCI = &ContainerInfo{}
-
-func (ci *ContainerInfo) Reset() {
-	*ci = *zeroCI
-}
-
 // Pod Info are managed by KuScale
 type PodInfo struct {
 	podName string
 	// namespace     string
 	containerName string
-	initFlag      bool
+	initFlag      bool // TODO: Need to check how to use
 
 	// totalToken uint64
 	// initCpu    uint64
@@ -128,7 +109,14 @@ type PodInfo struct {
 
 	// pid           string
 	// interfaceName string
-	CI ContainerInfo
+
+	// Resource Names
+	RNs []string
+	// Resource Infos
+	RIs map[string]*ResourceInfo
+
+	// Update Count from KuScale
+	UpdateCount int
 }
 
 func NewPodInfo(podName string, RNs []string) *PodInfo {
@@ -141,9 +129,9 @@ func NewPodInfo(podName string, RNs []string) *PodInfo {
 		cpuPath:  getCpuPath(podName),
 		gpuPath:  "/kubeshare/scheduler/total-usage-",
 	}
-	podInfo.CI.RNs = RNs
-	podInfo.CI.RIs = make(map[string]*ResourceInfo)
-	for _, name := range podInfo.CI.RNs {
+	podInfo.RNs = RNs
+	podInfo.RIs = make(map[string]*ResourceInfo)
+	for _, name := range podInfo.RNs {
 		ri := ResourceInfo{name: name}
 		switch name {
 		case "CPU":
@@ -152,7 +140,7 @@ func NewPodInfo(podName string, RNs []string) *PodInfo {
 			ri.Init(name, podInfo.gpuPath, miliGPU, 3)
 		}
 		ri.UpdateUsage(name, 1) //TODO: Need Change 1
-		podInfo.CI.RIs[name] = &ri
+		podInfo.RIs[name] = &ri
 	}
 
 	klog.V(5).Infof("Made New Pod Info %s", podName)

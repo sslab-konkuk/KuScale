@@ -29,8 +29,8 @@ type Exporter struct {
 }
 
 type ExporterCollector struct {
-	exporter *Exporter
-	monitor  *Monitor
+	exporter         *Exporter
+	connectedMonitor *Monitor
 }
 
 func (ec ExporterCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -38,19 +38,19 @@ func (ec ExporterCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (ec ExporterCollector) collect() error {
-	for _, pod := range ec.monitor.livePodMap {
+	for _, pod := range ec.connectedMonitor.livePodMap {
 		name := pod.containerName
 		id := pod.podName
-		node := ec.monitor.config.nodeName
+		node := ec.connectedMonitor.config.nodeName
 
-		for rn, ri := range pod.CI.RIs {
+		for rn, ri := range pod.RIs {
 			ec.exporter.Limit.WithLabelValues([]string{rn, id, node}...).Add(ri.Limit())
 			ec.exporter.Usage.WithLabelValues([]string{rn, id, node}...).Add(ri.Usage())
 			ec.exporter.AvgUsage.WithLabelValues([]string{rn, id, node}...).Add(ri.AvgUsage())
 			ec.exporter.AvgAvgUsage.WithLabelValues([]string{rn, id, node}...).Add(ri.AvgAvgUsage())
 		}
 
-		ec.exporter.UpdateCount.WithLabelValues([]string{name, id, node}...).Add(float64(pod.CI.UpdateCount))
+		ec.exporter.UpdateCount.WithLabelValues([]string{name, id, node}...).Add(float64(pod.UpdateCount))
 	}
 	return nil
 }
@@ -105,7 +105,7 @@ func NewExporter(reg prometheus.Registerer, m *Monitor) *Exporter {
 			[]string{"name", "id", "node"},
 		),
 	}
-	ec := ExporterCollector{exporter: dm, monitor: m}
+	ec := ExporterCollector{exporter: dm, connectedMonitor: m}
 
 	reg.MustRegister(ec)
 	return dm
@@ -113,7 +113,7 @@ func NewExporter(reg prometheus.Registerer, m *Monitor) *Exporter {
 
 func ExporterRun(m *Monitor, stopCh <-chan struct{}) {
 
-	klog.Info("Starting Exporter")
+	klog.V(4).Info("Starting Exporter")
 
 	reg := prometheus.NewPedanticRegistry()
 	NewExporter(reg, m)
@@ -124,7 +124,7 @@ func ExporterRun(m *Monitor, stopCh <-chan struct{}) {
 	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	go http.ListenAndServe(":9091", nil)
 
-	klog.Info("Started Exporter")
+	klog.V(4).Info("Started Exporter")
 	<-stopCh
-	klog.Info("Shutting down Exporter")
+	klog.V(4).Info("Shutting down Exporter")
 }
