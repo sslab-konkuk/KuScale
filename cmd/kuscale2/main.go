@@ -18,13 +18,21 @@ package main
 
 import (
 	"flag"
+	"os"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 
+	// Uncomment the following line to load the gcp plugin (only required to authenticate against GKE clusters).
+	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+
+	clientset "github.com/NTHU-LSALAB/KubeShare/pkg/client/clientset/versioned"
+	informers "github.com/NTHU-LSALAB/KubeShare/pkg/client/informers/externalversions"
 	"github.com/NTHU-LSALAB/KubeShare/pkg/signals"
 
 	kucontroller "github.com/sslab-konkuk/KuScale/pkg/kucontroller"
@@ -61,9 +69,6 @@ func main() {
 	// set up signals so we handle the first shutdown signal gracefully
 	stopCh := signals.SetupSignalHandler()
 
-	monitor := kumonitor.NewMonitor(monitoringPeriod, windowSize, nodeName, monitoringMode, exporterMode, stopCh)
-	go monitor.Run(stopCh)
-
 	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
 	if err != nil {
 		klog.Fatalf("Error building kubeconfig: %s", err.Error())
@@ -76,15 +81,45 @@ func main() {
 		klog.Fatalf("Error building kubernetes clientset: %s", err.Error())
 	}
 
-	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
+	kubeshareClient, err := clientset.NewForConfig(cfg)
+	if err != nil {
+		klog.Fatalf("Error building example clientset: %s", err.Error())
+	}
 
-	controller := kucontroller.NewController(kubeClient, kubeInformerFactory.Core().V1().Pods(), monitor)
+	if !checkCRD(kubeshareClient) {
+		klog.Error("CRD doesn't exist. Exiting")
+		os.Exit(1)
+	}
+
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
+	kubeshareInformerFactory := informers.NewSharedInformerFactory(kubeshareClient, time.Second*30)
+
+	controller := kucontroller.NewController(kubeClient, kubeshareClient,
+		kubeInformerFactory.Core().V1().Pods(),
+		kubeshareInformerFactory.Kubeshare().V1().SharePods())
 
 	// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)
 	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
 	kubeInformerFactory.Start(stopCh)
+	kubeshareInformerFactory.Start(stopCh)
+
+	monitor := kumonitor.NewMonitor(monitoringPeriod, windowSize, nodeName, monitoringMode, exporterMode, stopCh)
+	go monitor.Run(stopCh)
 
 	if err = controller.Run(threadNum, stopCh); err != nil {
 		klog.Fatalf("Error running controller: %s", err.Error())
 	}
+}
+
+func checkCRD(kubeshareClientSet *clientset.Clientset) bool {
+	_, err := kubeshareClientSet.KubeshareV1().SharePods("").List(metav1.ListOptions{})
+	if err != nil {
+		klog.Error(err)
+		if _, ok := err.(*errors.StatusError); ok {
+			if errors.IsNotFound(err) {
+				return false
+			}
+		}
+	}
+	return true
 }

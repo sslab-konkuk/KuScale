@@ -35,6 +35,7 @@ func NewMonitor(
 
 	klog.V(4).Info("Creating New Monitor")
 	config := Configuraion{monitoringPeriod, windowSize, nodeName, monitoringMode, exporterMode}
+	klog.V(4).Info("Configuration ", config)
 	monitor := &Monitor{config: config, livePodMap: make(PodMap), completedPodMap: make(PodMap)}
 
 	return monitor
@@ -50,13 +51,22 @@ func (m *Monitor) PrintPodList() {
 	}
 }
 
-func (m *Monitor) UpdateNewPod(podName string) {
+func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 
 	klog.V(5).Info("UpdateNewPod ", podName)
-	m.livePodMap[podName] = NewPodInfo(podName, []string{"CPU", "GPU"})
+	podInfo := NewPodInfo(podName, []string{"CPU", "GPU"})
+	if podInfo == nil {
+		klog.V(4).Info("Not Yet Start")
+		return
+	}
+	podInfo.initCpu = cpuLimit
+	podInfo.initGpu = gpuLimit
+	m.livePodMap[podName] = podInfo
 }
 
 func (m *Monitor) Monitor() {
+	klog.V(5).Info("MonitorPod Start")
+
 	for {
 		timer1 := time.NewTimer(time.Second * time.Duration(m.config.monitoringPeriod))
 		m.MonitorPod()
@@ -66,16 +76,25 @@ func (m *Monitor) Monitor() {
 
 func (m *Monitor) MonitorPod() {
 
-	klog.V(5).Info("MonitorPod Start")
-
 	for name, pi := range m.livePodMap {
 
 		// If Resource Path doesn't exist, Delete it
 		if !CheckPodExists(pi) {
+			if !pi.initFlag {
+				klog.V(4).Info("Not Yet Start ", name)
+				continue
+			}
 			klog.Info("Completed ", name)
 			m.completedPodMap[name] = pi
 			delete(m.livePodMap, name)
 			continue
+		}
+		if !pi.initFlag {
+			klog.V(4).Info("Start ", name)
+			SetCpuLimit(pi, pi.initCpu)
+			pi.RIs["GPU"].SetLimit(pi.initGpu)
+			writeGpuGeminiConfig(m.livePodMap)
+			pi.initFlag = true
 		}
 
 		// Monitor Pod
@@ -93,9 +112,9 @@ func (m *Monitor) MonitorPod() {
 
 func (m *Monitor) Run(stopCh <-chan struct{}) {
 
-	m.UpdateNewPod("pod3")
-	m.UpdateNewPod("pod4")
-	m.PrintPodList()
+	// m.UpdateNewPod("pod3")
+	// m.UpdateNewPod("pod4")
+	// m.PrintPodList()
 
 	klog.V(4).Info("Starting Monitor")
 	go m.Monitor()

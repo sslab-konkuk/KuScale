@@ -8,7 +8,7 @@ FROM guswns531/kuscale:base-03
 
 WORKDIR /home/kuscale
 
-COPY . .
+COPY ./bin ./bin
 
 # RUN apt update && \
 #     apt install -y g++ wget make iproute2 curl kmod && \
@@ -17,9 +17,8 @@ COPY . .
 #     make
 #     # echo hello
 
-RUN cd src && \
 
-    make
-
-CMD ["./bin/main"]
+CMD ["./bin/kuscale", "-v", "4"]
+CMD ["./bin/kuscale", "-v", "4", "--MonitoringPeriod", "10"]
+# CMD ["./bin/kuscale", "--kubeconfig", "~/.kube/config", "-v", "5"]
 

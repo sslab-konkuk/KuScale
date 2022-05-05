@@ -15,6 +15,7 @@
 package kumonitor
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -137,32 +138,28 @@ func SetGpuLimit(pi *PodInfo, nextGpu float64) {
 // 	pi.CI.RIs["RX"].SetLimit(nextRx)
 // }
 
-// func writeGpuGeminiConfig() {
+func writeGpuGeminiConfig(livepodmap PodMap) {
 
-// 	gpu_config_f, err := os.Create(SchedulerGPUConfigPath)
-// 	if err != nil {
-// 		klog.Errorf("Error when create config file on path: %s", SchedulerGPUConfigPath)
-// 	}
+	gpu_config_f, err := os.Create("/kubeshare/scheduler/config/GPU-5505de23-34be-e7b1-1da9-f33b0d7f78e5")
+	if err != nil {
+		klog.Errorf("Error when create config file on path: %s", "/kubeshare/scheduler/config/GPU-5505de23-34be-e7b1-1da9-f33b0d7f78e5")
+	}
 
-// 	for i, pod := range pod_configs {
-// 		pod_config := strings.Split(pod, " ")
-// 		if len(pod_config) < 4 {
-// 			break
-// 		}
+	for name, pod := range livepodmap {
 
-// 		minutil, maxutil, memlimit := pod_config[1], pod_config[2], pod_config[3]
-// 		def := strings.Split(pod_config[0], "/")
-// 		podname := def[1]
-// 		klog.Infof("pod info[%d]: %s, %s, %s, %s, %s", i, def, podname, minutil, maxutil, memlimit)
+		// minutil, maxutil, memlimit := pod_config[1], pod_config[2], pod_config[3]
+		// def := strings.Split(pod_config[0], "/")
+		// podname := def[1]
+		// klog.Infof("pod info[%d]: %s, %s, %s, %s, %s", i, def, podname, minutil, maxutil, memlimit)
+		maxutil := pod.RIs["GPU"].limit / 100
+		//pod key file
+		gpu_config_f.WriteString(fmt.Sprintf("[%s]\n", name))
+		// gpu_config_f.WriteString(fmt.Sprintf("clientid=%d\n", strings.Count(podlist, ",")))
+		// gpu_config_f.WriteString(fmt.Sprintf("MinUtil=%s\n", minutil))
+		gpu_config_f.WriteString(fmt.Sprintf("MaxUtil=%f\n", maxutil))
+		// gpu_config_f.WriteString(fmt.Sprintf("MemoryLimit=%s\n", memlimit))
+	}
 
-// 		//pod key file
-// 		gpu_config_f.WriteString(fmt.Sprintf("[%s]\n", podname))
-// 		gpu_config_f.WriteString(fmt.Sprintf("clientid=%d\n", strings.Count(podlist, ",")))
-// 		gpu_config_f.WriteString(fmt.Sprintf("MinUtil=%s\n", minutil))
-// 		gpu_config_f.WriteString(fmt.Sprintf("MaxUtil=%s\n", maxutil))
-// 		gpu_config_f.WriteString(fmt.Sprintf("MemoryLimit=%s\n", memlimit))
-// 	}
-
-// 	gpu_config_f.Sync()
-// 	gpu_config_f.Close()
-// }
+	gpu_config_f.Sync()
+	gpu_config_f.Close()
+}

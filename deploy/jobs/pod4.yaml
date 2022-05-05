@@ -1,10 +1,12 @@
 apiVersion: kubeshare.nthu/v1
 kind: SharePod
 metadata:
-  name: pod3
+  name: pod4
   annotations:
-    "kubeshare/gpu_request": "0.5"
-    "kubeshare/gpu_limit": "0.5"
+    "kuscale/cpu_limit": "100"
+    "kuscale/gpu_limit": "50"
+    "kubeshare/gpu_request": "0.0"
+    "kubeshare/gpu_limit": "0.0"
     "kubeshare/gpu_mem": "3145728000"
 spec:
   terminationGracePeriodSeconds: 0

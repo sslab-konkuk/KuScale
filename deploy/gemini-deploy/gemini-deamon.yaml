@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gemini-deamon
+  namespace: default
+  labels:
+    lsalab: gemini-deamon
+spec:
+  selector:
+    matchLabels:
+      lsalab: gemini-deamon
+  template:
+    metadata:
+      labels:
+        lsalab: gemini-deamon
+    spec:
+      terminationGracePeriodSeconds: 0
+      restartPolicy: Always
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+      initContainers:
+      - name: gemini-hook-init
+        image: guswns531/kubeshare-gemini-hook-init:v2.1
+        volumeMounts:
+        - name: "kubeshare-library"
+          mountPath: /kubeshare/library
+      containers:
+      - name: gemini-scheduler
+        image: guswns531/kubeshare-gemini-scheduler:v2.1
+        # command: ['sleep', '100000']
+        # command:  ["/launcher-multigpus.sh", "/kubeshare/scheduler/config", "/kubeshare/scheduler/ipc"]
+        command:  ["./gem-schd", "-p", "/kubeshare/scheduler/ipc", "-f", "/kubeshare/scheduler/config/resource.conf"]
+        volumeMounts:
+        - name: "kubeshare-scheduler"
+          mountPath: "/kubeshare/scheduler"
+        - name: "kubeshare-library"
+          mountPath: "/kubeshare/library"
+      volumes:
+      - name: "kubeshare-scheduler"
+        hostPath:
+          path: "/kubeshare/scheduler"
+      - name: "kubeshare-library"
+        hostPath:
+          path: "/kubeshare/library"
+

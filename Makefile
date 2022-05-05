@@ -18,20 +18,34 @@ GO_MODULE=GO111MODULE=on
 BIN_DIR=./bin/
 CMD_DIR=./cmd/
 COMPILE_FLAGS=CGO_ENABLED=0 GOOS=linux GOARCH=amd64
-VERSION?=1
+VERSION?=9
+KLOG?=5
 
 .PHONY: all clean $(TARGET)
 
 all: $(TARGET)
 
 run:
-	./bin/kuscale  --kubeconfig ~/.kube/config -v 5
+	./bin/kuscale  --kubeconfig ~/.kube/config -v $(KLOG)
+
+run-docker: $(TARGET) build-docker apply
+
+.PHONY: apply 
+apply:
+	envsubst < ./deploy/kuscale.yaml | kubectl apply -f -
+
+.PHONY: delete 
+delete:
+	envsubst < ./deploy/kuscale.yaml | kubectl delete -f -
 
 kuscale:
 	$(GO_MODULE) $(COMPILE_FLAGS) $(GO) build -o $(BIN_DIR)$@ $(CMD_DIR)$@
 
 build-get:
 	$(GO_MODULE) $(COMPILE_FLAGS) go get -u k8s.io/client-go@v0.17.2 github.com/googleapis/gnostic@v0.3.1 golang.org/x/net@v0.0.0-20191004110552-13f9640d40b9 ./...
+
+build-docker:
+	docker build -t guswns531/kuscale:base-$(VERSION) -f ./build/docker/Dockerfile .
 
 build-base:
 	docker build -t guswns531/kuscale:base-$(VERSION) -f ./build/docker-base/Dockerfile .

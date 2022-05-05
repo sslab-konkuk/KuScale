@@ -1,3 +1,37 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kuscale
+  namespace: default
+
+---
+
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: kuscale
+rules:
+- apiGroups: [""]
+  resources: ["*"]
+  verbs: ["*"]
+
+---
+
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: kuscale
+subjects:
+- kind: ServiceAccount
+  name: kuscale
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: kuscale
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -16,12 +50,13 @@ spec:
       labels:
         name: kuscale-ds
     spec:
+      serviceAccountName: kuscale
       hostNetwork: true  
       # serviceAccount: kuscale
       # imagePullSecrets:
       # - name: regcred
       containers:
-      - image: guswns531/kuscale:base-09
+      - image: guswns531/kuscale:base-${VERSION}
         name: kuscale
         # command: ['./main', '-hostname=$(NODE_NAME)','-m','-t=6000']
         securityContext:

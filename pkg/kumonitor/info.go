@@ -68,6 +68,9 @@ func (ri *ResourceInfo) UpdateUsage(podName string, monitoringPeriod int) {
 
 	ri.acctUsage = append(ri.acctUsage, ri.GetAcctUsage(podName))
 	ri.usage = CalAvg(ri.acctUsage, 1) / float64(ri.miliScale*monitoringPeriod) // TODO: need to check CPU overflow
+	if ri.usage > 1000 {
+		ri.usage = 0
+	}
 	ri.avgUsage = (7*ri.avgUsage + ri.usage) / 8
 	ri.avgAvgUsage = (7*ri.avgAvgUsage + ri.avgUsage) / 8
 }
@@ -99,8 +102,8 @@ type PodInfo struct {
 	initFlag      bool // TODO: Need to check how to use
 
 	// totalToken uint64
-	// initCpu    uint64
-	// initGpu    uint64
+	initCpu float64
+	initGpu float64
 	// initRx     uint64
 
 	cpuPath string
@@ -123,10 +126,15 @@ func NewPodInfo(podName string, RNs []string) *PodInfo {
 
 	klog.V(5).Infof("Makeing New Pod Info %s", podName)
 
+	cpuPath := getCpuPath(podName)
+	if cpuPath == "" {
+		return nil
+	}
+
 	podInfo := PodInfo{
 		podName:  podName,
 		initFlag: false,
-		cpuPath:  getCpuPath(podName),
+		cpuPath:  cpuPath,
 		gpuPath:  "/kubeshare/scheduler/total-usage-",
 	}
 	podInfo.RNs = RNs

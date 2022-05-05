@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: matrix
+spec:
+  parallelism: 1
+  template:
+    spec:
+      hostIPC: true
+      restartPolicy: Never
+      containers:
+      - image: guswns531/jobs:matrix-002
+        name: matrix-1
+        command: ['./matrix', '2048', '1000']
+        # command: ['sleep', '100000']
+        env:
+        - name: LD_PRELOAD
+          value: /kubeshare/library/libgemhook.so.1
+        - name: LD_LIBRARY_PATH
+          value: /kubeshare/library/
+        - name: GEMINI_IPC_DIR
+          value:  /kubeshare/scheduler/ipc/
+        - name: GEMINI_GROUP_NAME
+          value: pod5
+        volumeMounts:
+        - name: shmdir
+          mountPath: /dev/shm
+        - name: kubeshare-lib
+          mountPath: /kubeshare/library/
+        - name: kubeshare-ipc
+          mountPath: /kubeshare/scheduler/ipc/  
+      volumes:
+      - name: shmdir
+        emptyDir:
+          medium: Memory
+          sizeLimit: "1G"
+      - name: kubeshare-lib
+        hostPath:
+          path: /kubeshare/library/
+      - name: kubeshare-ipc
+        hostPath:
+          path: /kubeshare/scheduler/ipc/
+
