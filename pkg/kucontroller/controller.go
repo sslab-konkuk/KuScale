@@ -184,6 +184,8 @@ func (c *Controller) handleObject(obj interface{}) {
 			klog.V(4).Info("gpu_limit annotations Error , Pod %s", object.GetName())
 			return
 		}
+		// conditions := obj.(metav1.Condition)
+		// klog.V(4).Info(conditions.Status)
 
 		c.km.UpdateNewPod(object.GetName(), cpu_limit, gpu_limit)
 

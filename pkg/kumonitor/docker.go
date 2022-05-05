@@ -15,8 +15,10 @@ func getCpuPath(podName string) string {
 		panic(err)
 	}
 	filterlabel := "io.kubernetes.pod.name=" + podName
+	filterlabel2 := "io.kubernetes.docker.type=container"
 	filters := filters.NewArgs()
 	filters.Add("label", filterlabel)
+	filters.Add("label", filterlabel2)
 
 	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{Filters: filters})
 	if err != nil {
@@ -27,13 +29,13 @@ func getCpuPath(podName string) string {
 		klog.V(5).Info("getCPUPath , no path ", podName)
 		return ""
 	}
-	
+
 	data, err := cli.ContainerInspect(ctx, containers[0].ID)
 
 	if err != nil {
 		panic(err)
 	}
-	
+
 	cgroupPath := "/home/cgroup/cpu/kubepods.slice/kubepods-besteffort.slice/" + data.HostConfig.CgroupParent + "/docker-" + containers[0].ID + ".scope"
 
 	klog.V(5).Info("getCPUPath ", podName, " ", cgroupPath)
@@ -65,12 +67,12 @@ func getCpuPath(podName string) string {
 // 		panic(err)
 // 	}
 // 	var gpuPath string
-	
+
 // 	for _, m := range data.Mounts {
 // 		if m.Destination == "/home/gpu" {
 // 			// gpuPath = "/home/" + m.Source[12:]
 // 			gpuPath = m.Source
-// 		} 
+// 		}
 // 	}
 // 	// fmt.Println(data.Mounts[0].Source)
 
@@ -95,12 +97,12 @@ func getCpuPath(podName string) string {
 // 	if len(containers) == 0 {
 // 		return ""
 // 	}
-	
+
 // 	data, err := cli.ContainerInspect(ctx, containers[0].ID)
 // 	if err != nil {
 // 		panic(err)
 // 	}
-	
+
 // 	pid := data.State.Pid
 // 	// fmt.Println(pid)
 // 	// enterNsPrintFromPid(pid)
@@ -139,7 +141,7 @@ func getCpuPath(podName string) string {
 // 			interfacePath = m.Source
 // 			found = 1
 // 			// klog.Infof("FOUND")
-// 		} 
+// 		}
 // 	}
 // 	if found == 0 {
 // 		// klog.Infof("NOT FOUND")
@@ -159,7 +161,7 @@ func getCpuPath(podName string) string {
 //         log.Fatal(err)
 //     }
 //     defer file.Close()
-	
+
 //     scanner := bufio.NewScanner(file)
 //     for scanner.Scan() {
 //         // fmt.Println(scanner.Text())

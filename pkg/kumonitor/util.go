@@ -25,6 +25,13 @@ import (
 	"k8s.io/klog"
 )
 
+func postive(x float64) float64 {
+	if x < 0 {
+		return 0
+	}
+	return x
+}
+
 func setFileUint(value uint64, path, file string) {
 	err := ioutil.WriteFile(filepath.Join(path, file), []byte(strconv.FormatUint(uint64(value), 10)), os.FileMode(0777))
 	if err != nil {
@@ -124,12 +131,19 @@ func GetGpuLimitFromFile(pi *PodInfo) uint64 {
 /* Set Limit Functions */
 
 func SetCpuLimit(pi *PodInfo, nextCpu float64) {
+	if nextCpu > 1000 || nextCpu < 0 {
+		return
+	}
+
 	setFileUint(uint64(nextCpu)*1000, pi.cpuPath, "/cpu.cfs_quota_us")
 	pi.RIs["CPU"].SetLimit(nextCpu)
 }
 
 func SetGpuLimit(pi *PodInfo, nextGpu float64) {
-	setFileUint(uint64(nextGpu), pi.gpuPath, "/quota")
+	if nextGpu > 1000 || nextGpu < 0 {
+		return
+	}
+	// setFileUint(uint64(nextGpu), pi.gpuPath, "/quota")
 	pi.RIs["GPU"].SetLimit(nextGpu)
 }
 

@@ -18,7 +18,7 @@ COPY ./bin ./bin
 #     # echo hello
 
 
-CMD ["./bin/kuscale", "-v", "4"]
-CMD ["./bin/kuscale", "-v", "4", "--MonitoringPeriod", "10"]
+# CMD ["./bin/kuscale", "-v", "4"]
+CMD ["./bin/kuscale", "-v", "5", "--MonitoringPeriod", "2"]
 # CMD ["./bin/kuscale", "--kubeconfig", "~/.kube/config", "-v", "5"]
 

@@ -34,7 +34,7 @@ const miliGPU = 10
 
 type ResourceName string
 
-// var defaultResources = []string{"CPU", "GPU", "RX"}
+var defaultResources = []string{"CPU", "GPU", "RX"}
 
 // Resource Info are considered by KuScale
 type ResourceInfo struct {
@@ -68,6 +68,7 @@ func (ri *ResourceInfo) UpdateUsage(podName string, monitoringPeriod int) {
 
 	ri.acctUsage = append(ri.acctUsage, ri.GetAcctUsage(podName))
 	ri.usage = CalAvg(ri.acctUsage, 1) / float64(ri.miliScale*monitoringPeriod) // TODO: need to check CPU overflow
+	klog.V(4).Info(ri.name, " ", ri.usage)
 	if ri.usage > 1000 {
 		ri.usage = 0
 	}
@@ -101,9 +102,9 @@ type PodInfo struct {
 	containerName string
 	initFlag      bool // TODO: Need to check how to use
 
-	// totalToken uint64
-	initCpu float64
-	initGpu float64
+	totalToken uint64
+	initCpu    float64
+	initGpu    float64
 	// initRx     uint64
 
 	cpuPath string

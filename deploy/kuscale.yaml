@@ -58,7 +58,7 @@ spec:
       containers:
       - image: guswns531/kuscale:base-${VERSION}
         name: kuscale
-        # command: ['./main', '-hostname=$(NODE_NAME)','-m','-t=6000']
+        command: ["./bin/kuscale", "-v", "4", "--MonitoringPeriod", "4", "--MonitoringMode", "false"]
         securityContext:
             privileged: true
             capabilities:

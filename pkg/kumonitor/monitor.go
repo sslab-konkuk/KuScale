@@ -53,14 +53,20 @@ func (m *Monitor) PrintPodList() {
 
 func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 
+	if _, ok := m.livePodMap[podName]; ok {
+		klog.V(4).Info("No Need to Update Live Pod ", podName)
+		return
+	}
+
 	klog.V(5).Info("UpdateNewPod ", podName)
 	podInfo := NewPodInfo(podName, []string{"CPU", "GPU"})
 	if podInfo == nil {
-		klog.V(4).Info("Not Yet Start")
+		klog.V(4).Info("Not Yet Start No Update")
 		return
 	}
 	podInfo.initCpu = cpuLimit
 	podInfo.initGpu = gpuLimit
+	podInfo.totalToken = uint64(cpuLimit + 3*gpuLimit)
 	m.livePodMap[podName] = podInfo
 }
 
@@ -70,6 +76,10 @@ func (m *Monitor) Monitor() {
 	for {
 		timer1 := time.NewTimer(time.Second * time.Duration(m.config.monitoringPeriod))
 		m.MonitorPod()
+
+		// if m.config.monitoring {
+		// 	m.autoscale()
+		// }
 		<-timer1.C
 	}
 }
@@ -104,10 +114,12 @@ func (m *Monitor) MonitorPod() {
 
 		klog.V(5).Info(pi.podName, " ", pi.RIs["CPU"].Usage(), pi.RIs["GPU"].Usage())
 		// klog.V(5).Info("[",pi.podName,"] : ", pi.RIs["CPU"].Usage(), pi.RIs["CPU"].Limit(), ":", pi.RIs["GPU"].Usage(), pi.RIs["GPU"].Limit(), ":",pi.RIs["RX"].Usage(), pi.RIs["RX"].Limit())
-
 		// Update Pod
 		m.livePodMap[name] = pi
+
+		m.autoscale()
 	}
+
 }
 
 func (m *Monitor) Run(stopCh <-chan struct{}) {
