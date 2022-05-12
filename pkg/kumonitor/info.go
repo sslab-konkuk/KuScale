@@ -24,8 +24,7 @@ type Configuraion struct {
 	monitoringPeriod int
 	windowSize       int
 	nodeName         string
-	monitoring       bool
-	exportMode       bool
+	monitoringMode   bool
 }
 
 const miliCPU = 10000000
@@ -60,20 +59,19 @@ func (ri *ResourceInfo) Init(name ResourceName, scale int, price float64) {
 	ri.limit, ri.usage, ri.avgUsage, ri.avgUsage, ri.avgAvgUsage = 0, 0, 0, 0, 0
 }
 
-func (ri ResourceInfo) Limit() float64          { return ri.limit }
-func (ri ResourceInfo) Usage() float64          { return math.Round(ri.usage) }
-func (ri ResourceInfo) AvgUsage() float64       { return ri.avgUsage }
-func (ri ResourceInfo) AvgAvgUsage() float64    { return ri.avgAvgUsage }
-func (ri ResourceInfo) Price() float64          { return ri.price }
+func (ri *ResourceInfo) Limit() float64         { return ri.limit }
+func (ri *ResourceInfo) Usage() float64         { return math.Round(ri.usage) }
+func (ri *ResourceInfo) AvgUsage() float64      { return ri.avgUsage }
+func (ri *ResourceInfo) AvgAvgUsage() float64   { return ri.avgAvgUsage }
+func (ri *ResourceInfo) Price() float64         { return ri.price }
 func (ri *ResourceInfo) SetLimit(limit float64) { ri.limit = limit }
-func (ri ResourceInfo) GetAcctUsage() uint64 {
+func (ri *ResourceInfo) GetAcctUsage() uint64 {
 
 	switch ri.name {
 	case "CPU":
 		return GetCpuAcctUsage(ri.path)
 	case "GPU":
 		return GetGpuAcctUsage(ri.path)
-		// return GetFileParamUint(ri.path, podName)
 		// case "RX":
 		// 	ifaceStats, err := scanInterfaceStats(ri.path) // TODO : NEED TO READ HOST NET DEV
 		// 	if err != nil {
@@ -88,14 +86,10 @@ func (ri ResourceInfo) GetAcctUsage() uint64 {
 type PodStatus string
 
 const (
-	// ConsistencyFull guarantees bind mount-like consistency
 	PodInitializing PodStatus = "initializing"
-	// ConsistencyCached mounts can cache read data and FS structure
-	PodReady PodStatus = "ready"
-	// ConsistencyDelegated mounts can cache read and written data and structure
-	PodRunning PodStatus = "running"
-	// ConsistencyDefault provides "consistent" behavior unless overridden
-	PodFinished PodStatus = "finished"
+	PodReady        PodStatus = "ready"
+	PodRunning      PodStatus = "running"
+	PodFinished     PodStatus = "finished"
 )
 
 // Pod Info are managed by KuScale

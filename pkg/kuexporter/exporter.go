@@ -44,7 +44,7 @@ func (ec ExporterCollector) Describe(ch chan<- *prometheus.Desc) {
 func (ec ExporterCollector) collect() error {
 	for _, pod := range ec.connectedMonitor.RunningPodMap {
 		name := pod.PodName
-		id := pod.ID
+		id := pod.ID[:12]
 		node := ec.nodeName
 
 		for rn, ri := range pod.RIs {

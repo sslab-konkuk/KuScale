@@ -21,27 +21,28 @@ import (
 	"k8s.io/klog"
 )
 
-type PodMap map[string]*PodInfo
+type PodInfoMap map[string]*PodInfo
+type PodIDtoNameMap map[string]string
 
 type Monitor struct {
 	ctx             context.Context
 	cli             *client.Client
 	config          Configuraion
-	RunningPodMap   PodMap
-	completedPodMap PodMap
+	RunningPodMap   PodInfoMap
+	completedPodMap PodInfoMap
+	podIDtoNameMap  PodIDtoNameMap
 }
 
 func NewMonitor(
 	monitoringPeriod, windowSize int,
 	nodeName string,
 	monitoringMode bool,
-	exporterMode bool,
 	stopCh <-chan struct{}) *Monitor {
 
 	klog.V(4).Info("Creating New Monitor")
-	config := Configuraion{monitoringPeriod, windowSize, nodeName, monitoringMode, exporterMode}
+	config := Configuraion{monitoringPeriod, windowSize, nodeName, monitoringMode}
 	klog.V(4).Info("Configuration ", config)
-	monitor := &Monitor{config: config, RunningPodMap: make(PodMap), completedPodMap: make(PodMap)}
+	monitor := &Monitor{config: config, RunningPodMap: make(PodInfoMap), completedPodMap: make(PodInfoMap), podIDtoNameMap: make(PodIDtoNameMap)}
 
 	return monitor
 }
@@ -81,14 +82,17 @@ func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 }
 
 func (m *Monitor) Monitoring() {
-	klog.V(5).Info("MonitorPod Start")
+	klog.V(5).Info("Monitoring Start")
 
 	for {
 		timer1 := time.NewTimer(time.Second * time.Duration(m.config.monitoringPeriod))
 		m.MonitorPod()
-		if !m.config.monitoring {
+		if !m.config.monitoringMode {
 			m.Autoscale()
 		}
+		// now := time.Now().UnixNano()
+		// klog.Info(now)
+
 		<-timer1.C
 	}
 }
@@ -97,29 +101,21 @@ func (m *Monitor) MonitorPod() {
 
 	for name, pi := range m.RunningPodMap {
 
-		klog.Info("monitor ", name, pi)
+		if pi.podStatus == PodReady && CheckPodPath(pi) {
+			pi.podStatus = PodRunning
+		} else if pi.podStatus == PodRunning && !CheckPodPath(pi) {
+			klog.V(4).Info("Completed ", name)
+			pi.podStatus = PodFinished
+			m.completedPodMap[name] = pi
+			delete(m.RunningPodMap, name)
+			continue
+		}
 
-		// if pi.podStatus == PodReady && CheckPodPath(pi) {
-		// 	klog.Info("monitor running", name)
-
-		// 	pi.podStatus = PodRunning
-		// } else if pi.podStatus == PodRunning && !CheckPodPath(pi) {
-		// 	klog.Info("Completed ", name)
-		// 	pi.podStatus = PodFinished
-		// 	m.completedPodMap[name] = pi
-		// 	delete(m.RunningPodMap, name)
-		// 	continue
-		// }
-
-		// if pi.podStatus != PodRunning {
-		// 	klog.Info("monitor notrunning ", name)
-
-		// 	continue
-		// }
+		if pi.podStatus != PodRunning {
+			continue
+		}
 
 		// Monitor Pod
-		klog.Info("monitor star ", name)
-
 		pi.UpdateUsage(m.config.monitoringPeriod)
 
 		klog.V(5).Info(pi.PodName, " ", pi.RIs["CPU"].Usage(), pi.RIs["GPU"].Usage())
@@ -130,11 +126,6 @@ func (m *Monitor) MonitorPod() {
 func (m *Monitor) Run(stopCh <-chan struct{}) {
 	m.ConnectDocker()
 	go m.UpdateNewPod("pod3", 100.0, 50.0)
-	// m.UpdateNewPod("pod3")
-	// m.UpdateNewPod("pod4")
-	// m.PrintPodList()
-	// ctx, cli := ConnectDocker()
-	// RunDockerContainer(ctx, cli, "pod5", "guswns531/jobs:matrix-001", 100)
 
 	klog.V(4).Info("Starting Monitor")
 	go m.Monitoring()

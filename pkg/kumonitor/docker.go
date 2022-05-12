@@ -8,8 +8,6 @@ import (
 	"github.com/docker/docker/api/types/container"
 
 	// "github.com/docker/docker/api/types/filters"
-	"io"
-	"os"
 
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
@@ -36,7 +34,8 @@ func (m *Monitor) RunNewContainer(podInfo *PodInfo) {
 		panic(err)
 	}
 	defer out.Close()
-	io.Copy(os.Stdout, out)
+	// io.Copy(os.Stdout, out)
+	// klog.V(4).Info(out)
 
 	hostConfig := container.HostConfig{}
 	var mounts []mount.Mount
@@ -64,7 +63,7 @@ func (m *Monitor) RunNewContainer(podInfo *PodInfo) {
 
 	resp, err := m.cli.ContainerCreate(m.ctx, &container.Config{
 		Image: podInfo.imageName,
-		Cmd:   []string{"./matrix", "2048", "1000"},
+		Cmd:   []string{"./matrix", "4096", "4000"},
 		Tty:   false,
 		Env: []string{"LD_PRELOAD=/kubeshare/library/libgemhook.so.1",
 			"LD_LIBRARY_PATH=/kubeshare/library/:$LD_LIBRARY_PATH",
@@ -85,6 +84,7 @@ func (m *Monitor) RunNewContainer(podInfo *PodInfo) {
 
 	klog.V(5).Info("Created Container: ", podInfo.PodName, " ID: ", resp.ID)
 	podInfo.ID = resp.ID
+	m.podIDtoNameMap[podInfo.ID] = podInfo.PodName
 	podInfo.RIs["CPU"].path = getCpuPath(podInfo.ID)
 	podInfo.RIs["GPU"].path = fmt.Sprintf("/kubeshare/scheduler/total-usage-%s", podInfo.PodName)
 
@@ -96,6 +96,32 @@ func (m *Monitor) RunNewContainer(podInfo *PodInfo) {
 	// 	}
 	// case <-statusCh:
 	// }
+}
+
+func (m *Monitor) StopContainer(podInfo *PodInfo) {
+	if err := m.cli.ContainerStop(m.ctx, podInfo.ID, nil); err != nil {
+		panic(err)
+	}
+}
+
+func (m *Monitor) WaitContainer(podInfo *PodInfo) {
+	statusCh, errCh := m.cli.ContainerWait(m.ctx, podInfo.ID, container.WaitConditionNotRunning)
+	select {
+	case err := <-errCh:
+		if err != nil {
+			panic(err)
+		}
+	case <-statusCh:
+	}
+}
+
+func (m *Monitor) WaitAllContainers() {
+	for name, pi := range m.RunningPodMap {
+		klog.V(4).Info("Stoping Container : ", name)
+		m.StopContainer(pi)
+		klog.V(4).Info("Stoped Container : ", name)
+		m.WaitContainer(pi)
+	}
 }
 
 // func getCpuPath(ctx context.Context, cli *client.Client, podName string) string {

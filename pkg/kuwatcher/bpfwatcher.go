@@ -3,7 +3,10 @@ package kuwatcher
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
+	"io/ioutil"
 	"os"
+	"strings"
 
 	"k8s.io/klog"
 
@@ -87,7 +90,7 @@ func (bw *BpfWatcher) Run(stopCh <-chan struct{}) {
 				klog.V(4).Infof("failed to decode received data: %s\n", err)
 				continue
 			}
-			klog.V(4).Infof("Detected %d's First cuLaunchKernel", event.Pid)
+			klog.V(4).Infof("Detected %d's First cuLaunchKernel [ID : %s]", event.Pid, bw.getIDfromPID(event.Pid))
 		}
 	}()
 
@@ -96,4 +99,18 @@ func (bw *BpfWatcher) Run(stopCh <-chan struct{}) {
 	<-stopCh
 	perfMap.Stop()
 	klog.V(4).Info("Shutting bpfWatcher Down")
+}
+
+func (bw *BpfWatcher) getIDfromPID(pid uint32) string {
+	data, _ := ioutil.ReadFile(fmt.Sprintf("/home/proc/%d/cgroup", pid))
+	lines := strings.Split(string(data), "\n")
+	for i := range lines {
+		if strings.Contains(lines[i], "cpu") {
+			docker := strings.Split(lines[i], "-")
+			pidString := strings.Split(docker[1], ".")
+			klog.V(5).Info(pidString[0])
+			return pidString[0]
+		}
+	}
+	return ""
 }

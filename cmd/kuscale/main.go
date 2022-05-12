@@ -30,6 +30,7 @@ import (
 	kucontroller "github.com/sslab-konkuk/KuScale/pkg/kucontroller"
 	kuexporter "github.com/sslab-konkuk/KuScale/pkg/kuexporter"
 	kumonitor "github.com/sslab-konkuk/KuScale/pkg/kumonitor"
+	kuwatcher "github.com/sslab-konkuk/KuScale/pkg/kuwatcher"
 	// "github.com/sslab-konkuk/KuScale/pkg/kumonitor/docker"
 )
 
@@ -59,17 +60,19 @@ func init() {
 func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
-
-	// set up signals so we handle the first shutdown signal gracefully
 	stopCh := signals.SetupSignalHandler()
 
-	monitor := kumonitor.NewMonitor(monitoringPeriod, windowSize, nodeName, monitoringMode, exporterMode, stopCh)
+	// Run Ku Monitor
+	monitor := kumonitor.NewMonitor(monitoringPeriod, windowSize, nodeName, monitoringMode, stopCh)
 	go monitor.Run(stopCh)
 
 	// Run Promethuse Exporter
 	if exporterMode {
 		go kuexporter.ExporterRun(monitor, nodeName, stopCh)
 	}
+
+	bpfWatcher := kuwatcher.NewbpfWatcher()
+	go bpfWatcher.Run(stopCh)
 
 	if false {
 		cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
@@ -99,5 +102,8 @@ func main() {
 
 	klog.V(4).Info("Started Kuscale")
 	<-stopCh
-	klog.V(4).Info("Shutting All")
+	klog.V(4).Info("Shutting All Down")
+	monitor.WaitAllContainers()
+	klog.V(4).Info("Shuttted All Down")
+
 }

@@ -6,6 +6,7 @@ require (
 	github.com/NTHU-LSALAB/KubeShare v0.9.4
 	github.com/docker/docker v20.10.15+incompatible
 	github.com/fsnotify/fsnotify v1.5.4
+	github.com/iovisor/gobpf v0.2.0
 	github.com/prometheus/client_golang v1.12.1
 	k8s.io/api v0.24.0
 	k8s.io/apimachinery v0.24.0

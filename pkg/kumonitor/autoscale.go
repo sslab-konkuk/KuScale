@@ -103,7 +103,7 @@ type MatrixInfo struct {
 	totalRowSize    int
 }
 
-func makeMatrix(pm PodMap) (MatrixInfo, Matrix) {
+func makeMatrix(pm PodInfoMap) (MatrixInfo, Matrix) {
 
 	// Number of Conditions : Token Condition(=nmOfPods) + Max Resource Condition(=nmOfResources) + Min Resource Conditions (=nmOfPods*nmOfResources)
 	nmOfPods := len(pm)

@@ -146,7 +146,7 @@ func SetCpuLimit(pi *PodInfo, nextCpu float64) {
 // 	pi.CI.RIs["RX"].SetLimit(nextRx)
 // }
 
-func writeGpuGeminiConfig(RunningPodMap PodMap) {
+func writeGpuGeminiConfig(RunningPodMap PodInfoMap) {
 
 	gpu_config_f, err := os.Create("/kubeshare/scheduler/config/resource.conf")
 	if err != nil {

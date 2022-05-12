@@ -1,11 +1,10 @@
 package kuscale
 
 import (
-
 	"os"
 	"os/signal"
-	"github.com/fsnotify/fsnotify"
 
+	"github.com/fsnotify/fsnotify"
 	// "context"
 	// "fmt"
 	// "net"
@@ -39,7 +38,7 @@ func newOSWatcher(sigs ...os.Signal) chan os.Signal {
 	return sigChan
 }
 
-// func getPodMap(pm PodMap) (bool, error) {
+// func getPodMap(pm PodInfoMap) (bool, error) {
 // 	// devicePods, err := getListOfPodsFromKubelet(podsocketPath)
 // 	// if err != nil {
 // 	// 	return false, fmt.Errorf("failed to get devices Pod information: %v", err)
@@ -84,7 +83,7 @@ func newOSWatcher(sigs ...os.Signal) chan os.Signal {
 // 	return conn, nil
 // }
 
-// func updatePodMap(pm PodMap, devicePods podresourcesapi.ListPodResourcesResponse) (bool) {
+// func updatePodMap(pm PodInfoMap, devicePods podresourcesapi.ListPodResourcesResponse) (bool) {
 // 	var new bool = false
 // 	var tokenSize = uint64(0)
 
@@ -104,12 +103,12 @@ func newOSWatcher(sigs ...os.Signal) chan os.Signal {
 // 				resourceName := device.GetResourceName()
 // 				if resourceName == resourceToken {
 // 					tokenSize = tokenSize + 1
-// 				} 
+// 				}
 // 			}
-			
+
 // 			if tokenSize > 0 {
 // 				// println("Pod %s, Container %s ",pod.GetName(), container.GetName(), resourceToken, check)
-				
+
 // 				PodInfo := PodInfo{
 // 					podName:      		podName,
 // 					namespace: 			pod.GetNamespace(),
@@ -128,8 +127,6 @@ func newOSWatcher(sigs ...os.Signal) chan os.Signal {
 // 			}
 // 		}
 // 	}
-
-
 
 // 	return new
 // }

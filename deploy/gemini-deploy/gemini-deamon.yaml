@@ -30,7 +30,8 @@ spec:
         image: guswns531/kubeshare-gemini-scheduler:v2.1
         # command: ['sleep', '100000']
         # command:  ["/launcher-multigpus.sh", "/kubeshare/scheduler/config", "/kubeshare/scheduler/ipc"]
-        command:  ["./gem-schd", "-p", "/kubeshare/scheduler/ipc", "-f", "/kubeshare/scheduler/config/resource.conf"]
+        # command:  ["./gem-schd", "-p", "/kubeshare/scheduler/ipc", "-f", "/kubeshare/scheduler/config/resource.conf"]
+        command:  ["./gem-schd", "-p", "/kubeshare/scheduler/ipc", "-f", "/kubeshare/scheduler/config/resource.conf", "-w", "1000.0"]
         volumeMounts:
         - name: "kubeshare-scheduler"
           mountPath: "/kubeshare/scheduler"
