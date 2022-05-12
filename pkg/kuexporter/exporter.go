@@ -11,13 +11,16 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package kumonitor
+package kumexporter
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"k8s.io/klog"
 	"net/http"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	kumonitor "github.com/sslab-konkuk/KuScale/pkg/kumonitor"
+	"k8s.io/klog"
 )
 
 type Exporter struct {
@@ -30,7 +33,8 @@ type Exporter struct {
 
 type ExporterCollector struct {
 	exporter         *Exporter
-	connectedMonitor *Monitor
+	connectedMonitor *kumonitor.Monitor
+	nodeName         string
 }
 
 func (ec ExporterCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -38,16 +42,16 @@ func (ec ExporterCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (ec ExporterCollector) collect() error {
-	for _, pod := range ec.connectedMonitor.livePodMap {
-		name := pod.containerName
-		id := pod.podName
-		node := ec.connectedMonitor.config.nodeName
+	for _, pod := range ec.connectedMonitor.RunningPodMap {
+		name := pod.PodName
+		id := pod.ID
+		node := ec.nodeName
 
 		for rn, ri := range pod.RIs {
-			ec.exporter.Limit.WithLabelValues([]string{rn, id, node}...).Add(ri.Limit())
-			ec.exporter.Usage.WithLabelValues([]string{rn, id, node}...).Add(ri.Usage())
-			ec.exporter.AvgUsage.WithLabelValues([]string{rn, id, node}...).Add(ri.AvgUsage())
-			ec.exporter.AvgAvgUsage.WithLabelValues([]string{rn, id, node}...).Add(ri.AvgAvgUsage())
+			ec.exporter.Limit.WithLabelValues([]string{string(rn), id, node}...).Add(ri.Limit())
+			ec.exporter.Usage.WithLabelValues([]string{string(rn), id, node}...).Add(ri.Usage())
+			ec.exporter.AvgUsage.WithLabelValues([]string{string(rn), id, node}...).Add(ri.AvgUsage())
+			ec.exporter.AvgAvgUsage.WithLabelValues([]string{string(rn), id, node}...).Add(ri.AvgAvgUsage())
 		}
 
 		ec.exporter.UpdateCount.WithLabelValues([]string{name, id, node}...).Add(float64(pod.UpdateCount))
@@ -73,7 +77,7 @@ func (ec ExporterCollector) Collect(ch chan<- prometheus.Metric) {
 	ec.exporter.UpdateCount.Collect(ch)
 }
 
-func NewExporter(reg prometheus.Registerer, m *Monitor) *Exporter {
+func NewExporter(reg prometheus.Registerer, m *kumonitor.Monitor, nodeName string) *Exporter {
 	dm := &Exporter{
 		Limit: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "Limit",
@@ -105,21 +109,21 @@ func NewExporter(reg prometheus.Registerer, m *Monitor) *Exporter {
 			[]string{"name", "id", "node"},
 		),
 	}
-	ec := ExporterCollector{exporter: dm, connectedMonitor: m}
+	ec := ExporterCollector{exporter: dm, connectedMonitor: m, nodeName: nodeName}
 
 	reg.MustRegister(ec)
 	return dm
 }
 
-func ExporterRun(m *Monitor, stopCh <-chan struct{}) {
+func ExporterRun(m *kumonitor.Monitor, nodeName string, stopCh <-chan struct{}) {
 
 	klog.V(4).Info("Starting Exporter")
 
 	reg := prometheus.NewPedanticRegistry()
-	NewExporter(reg, m)
+	NewExporter(reg, m, nodeName)
 	reg.MustRegister(
-		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
-		prometheus.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+		collectors.NewGoCollector(),
 	)
 	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	go http.ListenAndServe(":9091", nil)

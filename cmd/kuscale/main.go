@@ -28,7 +28,9 @@ import (
 	"github.com/NTHU-LSALAB/KubeShare/pkg/signals"
 
 	kucontroller "github.com/sslab-konkuk/KuScale/pkg/kucontroller"
+	kuexporter "github.com/sslab-konkuk/KuScale/pkg/kuexporter"
 	kumonitor "github.com/sslab-konkuk/KuScale/pkg/kumonitor"
+	// "github.com/sslab-konkuk/KuScale/pkg/kumonitor/docker"
 )
 
 var (
@@ -64,27 +66,38 @@ func main() {
 	monitor := kumonitor.NewMonitor(monitoringPeriod, windowSize, nodeName, monitoringMode, exporterMode, stopCh)
 	go monitor.Run(stopCh)
 
-	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
-	if err != nil {
-		klog.Fatalf("Error building kubeconfig: %s", err.Error())
-	}
-	cfg.QPS = 1024.0
-	cfg.Burst = 1024
-
-	kubeClient, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		klog.Fatalf("Error building kubernetes clientset: %s", err.Error())
+	// Run Promethuse Exporter
+	if exporterMode {
+		go kuexporter.ExporterRun(monitor, nodeName, stopCh)
 	}
 
-	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
+	if false {
+		cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
+		if err != nil {
+			klog.Fatalf("Error building kubeconfig: %s", err.Error())
+		}
+		cfg.QPS = 1024.0
+		cfg.Burst = 1024
 
-	controller := kucontroller.NewController(kubeClient, kubeInformerFactory.Core().V1().Pods(), monitor)
+		kubeClient, err := kubernetes.NewForConfig(cfg)
+		if err != nil {
+			klog.Fatalf("Error building kubernetes clientset: %s", err.Error())
+		}
 
-	// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)
-	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
-	kubeInformerFactory.Start(stopCh)
+		kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
 
-	if err = controller.Run(threadNum, stopCh); err != nil {
-		klog.Fatalf("Error running controller: %s", err.Error())
+		controller := kucontroller.NewController(kubeClient, kubeInformerFactory.Core().V1().Pods(), monitor)
+
+		// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)
+		// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
+		kubeInformerFactory.Start(stopCh)
+
+		if err = controller.Run(threadNum, stopCh); err != nil {
+			klog.Fatalf("Error running controller: %s", err.Error())
+		}
 	}
+
+	klog.V(4).Info("Started Kuscale")
+	<-stopCh
+	klog.V(4).Info("Shutting All")
 }

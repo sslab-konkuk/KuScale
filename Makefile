@@ -39,16 +39,24 @@ delete:
 	envsubst < ./deploy/kuscale.yaml | kubectl delete -f -
 
 kuscale:
-	$(GO_MODULE) $(COMPILE_FLAGS) $(GO) build -o $(BIN_DIR)$@ $(CMD_DIR)$@
+	$(GO) build -o $(BIN_DIR)$@ $(CMD_DIR)$@
+	# $(GO_MODULE) $(COMPILE_FLAGS) $(GO) build -o $(BIN_DIR)$@ $(CMD_DIR)$@
 
 build-get:
-	$(GO_MODULE) $(COMPILE_FLAGS) go get -u k8s.io/client-go@v0.17.2 github.com/googleapis/gnostic@v0.3.1 golang.org/x/net@v0.0.0-20191004110552-13f9640d40b9 ./...
+	$(GO_MODULE) $(COMPILE_FLAGS) go get -u ./...
+	# $(GO_MODULE) $(COMPILE_FLAGS) go get -u k8s.io/client-go@v0.17.2 github.com/googleapis/gnostic@v0.3.1 golang.org/x/net@v0.0.0-20191004110552-13f9640d40b9 ./...
 
 build-docker:
 	docker build -t guswns531/kuscale:base-$(VERSION) -f ./build/docker/Dockerfile .
 
 build-base:
 	docker build -t guswns531/kuscale:base-$(VERSION) -f ./build/docker-base/Dockerfile .
+
+gemini:
+	kubectl apply -f ./deploy/gemini-deploy
+
+gemini-down:
+	kubectl delete -f ./deploy/gemini-deploy
 
 kubeshare:
 	kubectl apply -f ./deploy/kubeshare-deploy

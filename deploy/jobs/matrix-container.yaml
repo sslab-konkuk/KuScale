@@ -1,0 +1,9 @@
+kind: container
+  name: pod3
+spec:
+  image: guswns531/jobs:matrix-002
+  command: ['./matrix', '4096', '4000']
+  resource: 
+    "cpu_limit": "100"
+    "gpu_limit": "50"
+    # "totaltoken"

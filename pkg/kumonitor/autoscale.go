@@ -16,8 +16,9 @@ package kumonitor
 
 import (
 	"fmt"
-	"k8s.io/klog"
 	"math"
+
+	"k8s.io/klog"
 )
 
 func printMatrix(matrix Matrix) {
@@ -132,7 +133,7 @@ func (m *Monitor) fillSlackConditons(mI MatrixInfo, inputMatrix Matrix, podNmMap
 	V1 := float64(10)
 	V2 := float64(1)
 
-	for name, pod := range m.livePodMap {
+	for name, pod := range m.RunningPodMap {
 		podNmMap[name] = podNm
 
 		/* SumAvg |A|^2 */
@@ -176,7 +177,7 @@ func (m *Monitor) fillTokenConditons(mI MatrixInfo, inputMatrix Matrix, podNmMap
 	nmR := mI.nmOfResources
 	tRS := mI.totalRowSize
 
-	for podName, pod := range m.livePodMap {
+	for podName, pod := range m.RunningPodMap {
 		podNm := podNmMap[podName]
 
 		for i, name := range pod.RNs {
@@ -258,14 +259,14 @@ func checkConditions(mI MatrixInfo, inputMatrix Matrix, result []float64) (int, 
 
 type PodNmMap map[string]int
 
-func (m *Monitor) autoscale() {
-	if len(m.livePodMap) == 0 {
+func (m *Monitor) Autoscale() {
+	if len(m.RunningPodMap) == 0 {
 		return
 	}
 
 	// test := 0
 	podNmMap := make(PodNmMap)
-	matrixInfo, matrix := makeMatrix(m.livePodMap)
+	matrixInfo, matrix := makeMatrix(m.RunningPodMap)
 	m.fillSlackConditons(matrixInfo, matrix, podNmMap)
 	m.fillTokenConditons(matrixInfo, matrix, podNmMap)
 	// gauss:
@@ -295,24 +296,24 @@ func (m *Monitor) updatePodInfo(podNmMap PodNmMap, result []float64) {
 
 	nmOfResources := 2
 
-	for name, pod := range m.livePodMap {
+	for name, pod := range m.RunningPodMap {
 		podNm := podNmMap[name]
 
 		if pod.UpdateCount == 0 {
 			pod.UpdateCount = 1
-			m.livePodMap[name] = pod
+			m.RunningPodMap[name] = pod
 			continue
 		}
 
 		SetCpuLimit(pod, math.Round(result[nmOfResources*podNm]))
-		SetGpuLimit(pod, math.Round(result[nmOfResources*podNm+1]))
+		// SetGpuLimit(pod, math.Round(result[nmOfResources*podNm+1]))
 		// pod.RIs["GPU"].SetLimit(math.Round(result[nmOfResources*podNm+1]))
-		writeGpuGeminiConfig(m.livePodMap)
+		writeGpuGeminiConfig(m.RunningPodMap)
 		// SetRxLimit(&pod, math.Round(result[nmOfResources*podNm+2]))
 		// log.Println("[",pod.podName,"]", pod.CI.RIs["CPU"], pod.CI.RIs["GPU"], pod.CI.RIs["RX"])
 		pod.UpdateCount = pod.UpdateCount + 1
 
-		m.livePodMap[name] = pod
+		m.RunningPodMap[name] = pod
 	}
 
 }

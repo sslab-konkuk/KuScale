@@ -58,7 +58,7 @@ spec:
       containers:
       - image: guswns531/kuscale:base-${VERSION}
         name: kuscale
-        command: ["./bin/kuscale", "-v", "4", "--MonitoringPeriod", "4", "--MonitoringMode", "false"]
+        # command: ["./bin/kuscale", "-v", "1", "--MonitoringPeriod", "2", "--MonitoringMode", "false"]
         securityContext:
             privileged: true
             capabilities:
@@ -83,6 +83,8 @@ spec:
             mountPath: /lib/modules
           - name: host-proc
             mountPath: /home/proc
+          - name: nfs
+            mountPath: /nfs
         env:
           - name: NODE_NAME
             valueFrom:
@@ -120,6 +122,10 @@ spec:
           hostPath:
             type: Directory
             path: /proc
+        - name: nfs
+          hostPath:
+            type: Directory
+            path: /home/sslab/nfs
         
 ---
 kind: Service

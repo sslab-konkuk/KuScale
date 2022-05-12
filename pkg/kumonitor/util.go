@@ -69,17 +69,13 @@ func PathExists(path string) bool {
 	return true
 }
 
-func CheckPodExists(pi *PodInfo) bool {
-	if !PathExists(filepath.Join(pi.cpuPath, "/cpu.cfs_quota_us")) {
-		return false
-		// } else if !PathExists(filepath.Join(pi.gpuPath, pi.podName) ) {
-		// 	return false
-		// } else if pi.interfaceName == "" {
-		// 	klog.Infof("NO interface %s", pi.interfaceName)
-		// 	return false
-	} else {
-		return true
+func CheckPodPath(pi *PodInfo) bool {
+	for _, ri := range pi.RIs {
+		if !PathExists(ri.path) {
+			return false
+		}
 	}
+	return true
 }
 
 func CalAvg(array []uint64, windowSize int) float64 {
@@ -99,18 +95,16 @@ func CalAvg(array []uint64, windowSize int) float64 {
 
 /* Get AcctUsage Functions */
 
-func (pi *PodInfo) GetCpuAcctUsage() uint64 {
-	return GetFileParamUint(pi.cpuPath, "/cpuacct.usage")
+func GetCpuAcctUsage(cpuPath string) uint64 {
+	return GetFileParamUint(cpuPath, "/cpuacct.usage")
 }
 
-func GetGpuAcctUsage(gpuPath, podName string) uint64 {
+func GetGpuAcctUsage(gpuPath string) uint64 {
 
-	path := gpuPath + podName
-	dat, _ := ioutil.ReadFile(path)
+	dat, _ := ioutil.ReadFile(gpuPath)
 	read_line := strings.TrimSuffix(string(dat), "\n")
 	num1, _ := strconv.ParseFloat(read_line, 64)
 	return uint64(num1)
-	// return GetFileParamUint(pi.gpuPath, pi.podName)
 }
 
 // func GetRxAcctUsage(pi *PodInfo) (uint64) {
@@ -120,46 +114,46 @@ func GetGpuAcctUsage(gpuPath, podName string) uint64 {
 
 /* Get Limit Functions */
 
-func GetCpuLimitFromFile(pi *PodInfo) uint64 {
-	return GetFileParamUint(pi.cpuPath, "/cpu.cfs_quota_us") / 1000
-}
+// func GetCpuLimitFromFile(pi *PodInfo) uint64 {
+// 	return GetFileParamUint(pi.cpuPath, "/cpu.cfs_quota_us") / 1000
+// }
 
-func GetGpuLimitFromFile(pi *PodInfo) uint64 {
-	return GetFileParamUint(pi.gpuPath, "/quota")
-}
+// func GetGpuLimitFromFile(pi *PodInfo) uint64 {
+// 	return GetFileParamUint(pi.gpuPath, "/quota")
+// }
 
-/* Set Limit Functions */
+// /* Set Limit Functions */
 
 func SetCpuLimit(pi *PodInfo, nextCpu float64) {
 	if nextCpu > 1000 || nextCpu < 0 {
 		return
 	}
 
-	setFileUint(uint64(nextCpu)*1000, pi.cpuPath, "/cpu.cfs_quota_us")
+	setFileUint(uint64(nextCpu)*1000, pi.RIs["CPU"].path, "/cpu.cfs_quota_us")
 	pi.RIs["CPU"].SetLimit(nextCpu)
 }
 
-func SetGpuLimit(pi *PodInfo, nextGpu float64) {
-	if nextGpu > 1000 || nextGpu < 0 {
-		return
-	}
-	// setFileUint(uint64(nextGpu), pi.gpuPath, "/quota")
-	pi.RIs["GPU"].SetLimit(nextGpu)
-}
+// func SetGpuLimit(pi *PodInfo, nextGpu float64) {
+// 	if nextGpu > 1000 || nextGpu < 0 {
+// 		return
+// 	}
+// 	// setFileUint(uint64(nextGpu), pi.gpuPath, "/quota")
+// 	pi.RIs["GPU"].SetLimit(nextGpu)
+// }
 
 // func SetRxLimit(pi *PodInfo, nextRx float64) {
 // 	UpdateIngressQdisc(uint64(nextRx) * miliRX, 2 * uint64(nextRx) * miliRX, pi.interfaceName)
 // 	pi.CI.RIs["RX"].SetLimit(nextRx)
 // }
 
-func writeGpuGeminiConfig(livepodmap PodMap) {
+func writeGpuGeminiConfig(RunningPodMap PodMap) {
 
-	gpu_config_f, err := os.Create("/kubeshare/scheduler/config/GPU-5505de23-34be-e7b1-1da9-f33b0d7f78e5")
+	gpu_config_f, err := os.Create("/kubeshare/scheduler/config/resource.conf")
 	if err != nil {
-		klog.Errorf("Error when create config file on path: %s", "/kubeshare/scheduler/config/GPU-5505de23-34be-e7b1-1da9-f33b0d7f78e5")
+		klog.Errorf("Error when create config file on path: %s", "/kubeshare/scheduler/config/resource.conf")
 	}
 
-	for name, pod := range livepodmap {
+	for name, pod := range RunningPodMap {
 
 		// minutil, maxutil, memlimit := pod_config[1], pod_config[2], pod_config[3]
 		// def := strings.Split(pod_config[0], "/")
