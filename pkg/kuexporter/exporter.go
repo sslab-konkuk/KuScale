@@ -130,5 +130,5 @@ func ExporterRun(m *kumonitor.Monitor, nodeName string, stopCh <-chan struct{}) 
 
 	klog.V(4).Info("Started Exporter")
 	<-stopCh
-	klog.V(4).Info("Shutting down Exporter")
+	klog.V(4).Info("Shutting exporter down")
 }

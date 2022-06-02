@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"k8s.io/klog"
 )
@@ -95,16 +96,17 @@ func CalAvg(array []uint64, windowSize int) float64 {
 
 /* Get AcctUsage Functions */
 
-func GetCpuAcctUsage(cpuPath string) uint64 {
-	return GetFileParamUint(cpuPath, "/cpuacct.usage")
+func GetCpuAcctUsage(cpuPath string) (uint64, int64) {
+	now := time.Now().UnixNano()
+	return GetFileParamUint(cpuPath, "/cpuacct.usage"), now
 }
 
-func GetGpuAcctUsage(gpuPath string) uint64 {
-
+func GetGpuAcctUsage(gpuPath string) (uint64, int64) {
+	now := time.Now().UnixNano()
 	dat, _ := ioutil.ReadFile(gpuPath)
 	read_line := strings.TrimSuffix(string(dat), "\n")
 	num1, _ := strconv.ParseFloat(read_line, 64)
-	return uint64(num1)
+	return uint64(num1), now
 }
 
 // func GetRxAcctUsage(pi *PodInfo) (uint64) {

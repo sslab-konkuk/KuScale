@@ -21,6 +21,13 @@ import (
 	"k8s.io/klog"
 )
 
+type Configuraion struct {
+	monitoringPeriod int
+	windowSize       int
+	nodeName         string
+	monitoringMode   bool
+}
+
 type PodInfoMap map[string]*PodInfo
 type PodIDtoNameMap map[string]string
 
@@ -31,6 +38,7 @@ type Monitor struct {
 	RunningPodMap   PodInfoMap
 	completedPodMap PodInfoMap
 	podIDtoNameMap  PodIDtoNameMap
+	stopFlag        bool
 }
 
 func NewMonitor(
@@ -42,7 +50,7 @@ func NewMonitor(
 	klog.V(4).Info("Creating New Monitor")
 	config := Configuraion{monitoringPeriod, windowSize, nodeName, monitoringMode}
 	klog.V(4).Info("Configuration ", config)
-	monitor := &Monitor{config: config, RunningPodMap: make(PodInfoMap), completedPodMap: make(PodInfoMap), podIDtoNameMap: make(PodIDtoNameMap)}
+	monitor := &Monitor{config: config, RunningPodMap: make(PodInfoMap), completedPodMap: make(PodInfoMap), podIDtoNameMap: make(PodIDtoNameMap), stopFlag: false}
 
 	return monitor
 }
@@ -77,6 +85,7 @@ func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 	podInfo.imageName = "guswns531/jobs:matrix-001"
 	m.RunNewContainer(podInfo)
 	podInfo.podStatus = PodReady
+	podInfo.UpdateUsage(m.config.monitoringPeriod)
 	m.RunningPodMap[podName] = podInfo
 	writeGpuGeminiConfig(m.RunningPodMap)
 }
@@ -84,15 +93,12 @@ func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 func (m *Monitor) Monitoring() {
 	klog.V(5).Info("Monitoring Start")
 
-	for {
+	for !m.stopFlag {
 		timer1 := time.NewTimer(time.Second * time.Duration(m.config.monitoringPeriod))
 		m.MonitorPod()
 		if !m.config.monitoringMode {
 			m.Autoscale()
 		}
-		// now := time.Now().UnixNano()
-		// klog.Info(now)
-
 		<-timer1.C
 	}
 }
@@ -119,6 +125,7 @@ func (m *Monitor) MonitorPod() {
 		pi.UpdateUsage(m.config.monitoringPeriod)
 
 		klog.V(5).Info(pi.PodName, " ", pi.RIs["CPU"].Usage(), pi.RIs["GPU"].Usage())
+		klog.V(5).Infof("%s, %.4f %.4f", pi.PodName, pi.RIs["CPU"].getCurrentUsage(), pi.RIs["GPU"].getCurrentUsage())
 		m.RunningPodMap[name] = pi
 	}
 }
@@ -126,10 +133,12 @@ func (m *Monitor) MonitorPod() {
 func (m *Monitor) Run(stopCh <-chan struct{}) {
 	m.ConnectDocker()
 	go m.UpdateNewPod("pod3", 100.0, 50.0)
+	go m.UpdateNewPod("pod4", 100.0, 50.0)
 
 	klog.V(4).Info("Starting Monitor")
 	go m.Monitoring()
 	klog.V(4).Info("Started Monitor")
 	<-stopCh
-	klog.V(4).Info("Shutting down Monitor")
+	m.stopFlag = true
+	klog.V(4).Info("Shutting monitor down")
 }

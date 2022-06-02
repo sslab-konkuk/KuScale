@@ -104,6 +104,6 @@ func main() {
 	<-stopCh
 	klog.V(4).Info("Shutting All Down")
 	monitor.WaitAllContainers()
-	klog.V(4).Info("Shuttted All Down")
+	klog.V(4).Info("Shutted All Down")
 
 }

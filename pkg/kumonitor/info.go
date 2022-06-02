@@ -16,16 +16,10 @@ package kumonitor
 
 import (
 	"math"
+	"time"
 
 	"k8s.io/klog"
 )
-
-type Configuraion struct {
-	monitoringPeriod int
-	windowSize       int
-	nodeName         string
-	monitoringMode   bool
-}
 
 const miliCPU = 10000000
 const miliGPU = 10
@@ -33,6 +27,10 @@ const miliGPU = 10
 // const miliRX = 80000 // miliNetworkBits = 10KB
 
 type ResourceName string
+type acctUsageAndTime struct {
+	timeStamp int64
+	acctUsage uint64
+}
 
 var defaultResources = []string{"CPU", "GPU", "RX"}
 
@@ -45,6 +43,7 @@ type ResourceInfo struct {
 	miliScale int
 	price     float64
 
+	test        []acctUsageAndTime
 	acctUsage   []uint64
 	limit       float64
 	usage       float64
@@ -57,6 +56,8 @@ func (ri *ResourceInfo) Init(name ResourceName, scale int, price float64) {
 	ri.name, ri.miliScale, ri.price = name, scale, price
 	ri.acctUsage = append(ri.acctUsage, 0)
 	ri.limit, ri.usage, ri.avgUsage, ri.avgUsage, ri.avgAvgUsage = 0, 0, 0, 0, 0
+	ri.test = append(ri.test, acctUsageAndTime{timeStamp: time.Now().UnixNano(), acctUsage: 0})
+
 }
 
 func (ri *ResourceInfo) Limit() float64         { return ri.limit }
@@ -69,9 +70,13 @@ func (ri *ResourceInfo) GetAcctUsage() uint64 {
 
 	switch ri.name {
 	case "CPU":
-		return GetCpuAcctUsage(ri.path)
+		acctUsage, timeStamp := GetCpuAcctUsage(ri.path)
+		ri.test = append(ri.test, acctUsageAndTime{timeStamp: timeStamp, acctUsage: acctUsage})
+		return acctUsage
 	case "GPU":
-		return GetGpuAcctUsage(ri.path)
+		acctUsage, timeStamp := GetGpuAcctUsage(ri.path)
+		ri.test = append(ri.test, acctUsageAndTime{timeStamp: timeStamp, acctUsage: acctUsage * 1000000})
+		return acctUsage
 		// case "RX":
 		// 	ifaceStats, err := scanInterfaceStats(ri.path) // TODO : NEED TO READ HOST NET DEV
 		// 	if err != nil {
@@ -81,6 +86,15 @@ func (ri *ResourceInfo) GetAcctUsage() uint64 {
 		// 	return 8 * ifaceStats[0].RxBytes // Make Bits
 	}
 	return 0
+}
+
+func (ri *ResourceInfo) getCurrentUsage() float64 {
+	array := ri.test
+	monitoringCount := len(array) - 1
+	prev := array[monitoringCount-1]
+	curr := array[monitoringCount]
+
+	return float64(curr.acctUsage-prev.acctUsage) * 100. / float64(curr.timeStamp-prev.timeStamp)
 }
 
 type PodStatus string
