@@ -167,7 +167,7 @@ func writeGpuGeminiConfig(RunningPodMap PodInfoMap) {
 		// gpu_config_f.WriteString(fmt.Sprintf("clientid=%d\n", strings.Count(podlist, ",")))
 		// gpu_config_f.WriteString(fmt.Sprintf("MinUtil=%s\n", minutil))
 		gpu_config_f.WriteString(fmt.Sprintf("MaxUtil=%f\n", maxutil))
-		// gpu_config_f.WriteString(fmt.Sprintf("MemoryLimit=%s\n", memlimit))
+		gpu_config_f.WriteString(fmt.Sprintf("MemoryLimit=%s\n", "10240MiB"))
 	}
 
 	gpu_config_f.Sync()

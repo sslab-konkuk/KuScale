@@ -63,7 +63,9 @@ func (m *Monitor) RunNewContainer(podInfo *PodInfo) {
 
 	resp, err := m.cli.ContainerCreate(m.ctx, &container.Config{
 		Image: podInfo.imageName,
-		Cmd:   []string{"./matrix", "4096", "4000"},
+		// Cmd:   []string{"python3", "detect.py", "--weights", "yolov5l6.pt", "--source", "2160p_30fps_30s.mp4", "--nosave", "--img", "3280"},
+		// Cmd:   []string{"./matrix", "4096", "4000"},
+		Cmd:   []string{"./excute.sh"},
 		Tty:   false,
 		Env: []string{"LD_PRELOAD=/kubeshare/library/libgemhook.so.1",
 			"LD_LIBRARY_PATH=/kubeshare/library/:$LD_LIBRARY_PATH",
