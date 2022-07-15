@@ -18,19 +18,17 @@ package main
 
 import (
 	"flag"
-	"time"
 
-	kubeinformers "k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 
 	"github.com/NTHU-LSALAB/KubeShare/pkg/signals"
+	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 
-	kucontroller "github.com/sslab-konkuk/KuScale/pkg/kucontroller"
+	// kucontroller "github.com/sslab-konkuk/KuScale/pkg/kucontroller"
 	kuexporter "github.com/sslab-konkuk/KuScale/pkg/kuexporter"
 	kumonitor "github.com/sslab-konkuk/KuScale/pkg/kumonitor"
-	kuwatcher "github.com/sslab-konkuk/KuScale/pkg/kuwatcher"
+	kutokenmanager "github.com/sslab-konkuk/KuScale/pkg/kutokenmanager"
+	// kuwatcher "github.com/sslab-konkuk/KuScale/pkg/kuwatcher"
 	// "github.com/sslab-konkuk/KuScale/pkg/kumonitor/docker"
 )
 
@@ -71,34 +69,41 @@ func main() {
 		go kuexporter.ExporterRun(monitor, nodeName, stopCh)
 	}
 
-	bpfWatcher := kuwatcher.NewbpfWatcher()
-	go bpfWatcher.Run(stopCh)
+	// // Run Ku BPF Watcher
+	// bpfWatcher := kuwatcher.NewbpfWatcher()
+	// go bpfWatcher.Run(stopCh)
 
-	if false {
-		cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
-		if err != nil {
-			klog.Fatalf("Error building kubeconfig: %s", err.Error())
-		}
-		cfg.QPS = 1024.0
-		cfg.Burst = 1024
+	// Run KU Device Plugin
+	tokenManager := kutokenmanager.Newkutokenmanager(
+		"kuscale.com/token", 10,
+		pluginapi.DevicePluginPath+"dorry-token.sock")
+	go tokenManager.Run(stopCh)
 
-		kubeClient, err := kubernetes.NewForConfig(cfg)
-		if err != nil {
-			klog.Fatalf("Error building kubernetes clientset: %s", err.Error())
-		}
+	// if false {
+	// 	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
+	// 	if err != nil {
+	// 		klog.Fatalf("Error building kubeconfig: %s", err.Error())
+	// 	}
+	// 	cfg.QPS = 1024.0
+	// 	cfg.Burst = 1024
 
-		kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
+	// 	kubeClient, err := kubernetes.NewForConfig(cfg)
+	// 	if err != nil {
+	// 		klog.Fatalf("Error building kubernetes clientset: %s", err.Error())
+	// 	}
 
-		controller := kucontroller.NewController(kubeClient, kubeInformerFactory.Core().V1().Pods(), monitor)
+	// 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
 
-		// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)
-		// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
-		kubeInformerFactory.Start(stopCh)
+	// 	controller := kucontroller.NewController(kubeClient, kubeInformerFactory.Core().V1().Pods(), monitor)
 
-		if err = controller.Run(threadNum, stopCh); err != nil {
-			klog.Fatalf("Error running controller: %s", err.Error())
-		}
-	}
+	// 	// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)
+	// 	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
+	// 	kubeInformerFactory.Start(stopCh)
+
+	// 	if err = controller.Run(threadNum, stopCh); err != nil {
+	// 		klog.Fatalf("Error running controller: %s", err.Error())
+	// 	}
+	// }
 
 	klog.V(4).Info("Started Kuscale")
 	<-stopCh

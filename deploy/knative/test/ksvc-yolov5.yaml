@@ -1,0 +1,15 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: yolov5-flask
+  namespace: default
+spec:
+  template:
+    spec:
+      containers:
+        - image: docker.io/guswns531/jobs:yolov5-flask-003
+          ports:
+          - containerPort: 5000
+          env:
+            - name: TARGET
+              value: "yolov5 Sample v1"
