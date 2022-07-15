@@ -11,3 +11,6 @@ spec:
           env:
             - name: TARGET
               value: "Python Sample v1"
+          resources:
+            limits:
+              dorry.com/token: 200

@@ -171,3 +171,17 @@ data:
 ### About Autoscale 
 
 https://github.com/knative/serving/blob/main/docs/scaling/SYSTEM.md
+
+
+
+### Vertical Pod Autoscaling Beta
+
+https://github.com/knative/serving/blob/release-1.5/docs/roadmap/scaling-2019.md
+
+A serverless system should be able to run code efficiently. Knative has default resources request and it supports resource requests and limits from the user. But if the user doesn't want to spend their time "tuning" resources (which is very "serverful") then Knative should be able to just "figure it out". That is Vertical Pod Autoscaling (VPA).
+
+Knative previously integrated with VPA Alpha. Now it needs to reintegrate with VPA Beta. In addition to creating VPA resources for each Revision, we need to do a little bookkeeping for the unique requirements of serverless workloads. For example, the window for VPA recommendations is 2 weeks. But a serverless function might be invoked once per year (e.g. when the fire alarm gets pulled). The pods should come back with the correct resource requests and limits. The way VPA is architected, it "injects" the correct recommendations via mutating webhook. It will decline to update resources requests after 2 weeks of inactivity and the Revision would fall back to defaults. Knative needs to remember what that recommendation was and make sure new pods start at the right levels.
+
+Additionally, the next Revision should learn from the previous. But it must not taint the previous Revision's state. For example, when a Service is in runLatest mode, the next Revision should start from the resource recommendations of the previous. Then VPA will apply learning on top of that to adjust for changes in the application behavior. However if the next Revision goes crazy because of bad recommendations, a quick rollback to the previous should pick up the good ones. Again, this requires a little bit of bookkeeping in Knative.
+
+Project: Project 18
