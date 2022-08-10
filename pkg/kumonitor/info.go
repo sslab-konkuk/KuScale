@@ -75,7 +75,7 @@ func (ri *ResourceInfo) GetAcctUsage() uint64 {
 		return acctUsage
 	case "GPU":
 		acctUsage, timeStamp := GetGpuAcctUsage(ri.path)
-		ri.test = append(ri.test, acctUsageAndTime{timeStamp: timeStamp, acctUsage: acctUsage * 1000000})
+		ri.test = append(ri.test, acctUsageAndTime{timeStamp: timeStamp, acctUsage: acctUsage})
 		return acctUsage
 		// case "RX":
 		// 	ifaceStats, err := scanInterfaceStats(ri.path) // TODO : NEED TO READ HOST NET DEV
@@ -151,14 +151,11 @@ func NewPodInfo(podName string, RNs []ResourceName) *PodInfo {
 	return &podInfo
 }
 
-func (pi *PodInfo) UpdateUsage(monitoringPeriod int) {
+func (pi *PodInfo) UpdateUsage() {
 
 	for _, ri := range pi.RIs {
 		ri.acctUsage = append(ri.acctUsage, ri.GetAcctUsage())
-		ri.usage = CalAvg(ri.acctUsage, 1) / float64(ri.miliScale*monitoringPeriod) // TODO: need to check CPU overflow
-		if ri.usage > 1000 {
-			ri.usage = 0
-		}
+		ri.usage = ri.getCurrentUsage()
 		ri.avgUsage = (7*ri.avgUsage + ri.usage) / 8
 		ri.avgAvgUsage = (7*ri.avgAvgUsage + ri.avgUsage) / 8
 	}

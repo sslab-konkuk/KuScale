@@ -308,7 +308,7 @@ func (m *Monitor) updatePodInfo(podNmMap PodNmMap, result []float64) {
 		SetCpuLimit(pod, math.Round(result[nmOfResources*podNm]))
 		// SetGpuLimit(pod, math.Round(result[nmOfResources*podNm+1]))
 		// pod.RIs["GPU"].SetLimit(math.Round(result[nmOfResources*podNm+1]))
-		writeGpuGeminiConfig(m.RunningPodMap)
+		// writeGpuGeminiConfig(m.RunningPodMap)
 		// SetRxLimit(&pod, math.Round(result[nmOfResources*podNm+2]))
 		// log.Println("[",pod.podName,"]", pod.CI.RIs["CPU"], pod.CI.RIs["GPU"], pod.CI.RIs["RX"])
 		pod.UpdateCount = pod.UpdateCount + 1

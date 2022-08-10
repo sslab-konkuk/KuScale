@@ -56,7 +56,8 @@ spec:
       # imagePullSecrets:
       # - name: regcred
       containers:
-      - image: guswns531/kuscale:base-${VERSION}
+      # - image: guswns531/kuscale:base-${VERSION}
+      - image: guswns531/kuscale:base-9
         name: kuscale
         # command: ["./bin/kuscale", "-v", "1", "--MonitoringPeriod", "2", "--MonitoringMode", "false"]
         securityContext:
@@ -69,8 +70,8 @@ spec:
             mountPath: /var/lib/kubelet/pod-resources
           - name: device-plugin
             mountPath: /kubeshare
-          - name: pods
-            mountPath: /var/lib/kubelet/pods
+          - name: kubelet
+            mountPath: /var/lib/kubelet/
           - name: cgroup
             mountPath: /home/cgroup
           - name: sys-kenel
@@ -83,8 +84,8 @@ spec:
             mountPath: /lib/modules
           - name: host-proc
             mountPath: /home/proc
-          - name: nfs
-            mountPath: /nfs
+          - name: kuscale
+            mountPath: /KuScale
         env:
           - name: NODE_NAME
             valueFrom:
@@ -97,9 +98,9 @@ spec:
         - name: device-plugin
           hostPath:
             path: /kubeshare
-        - name: pods
+        - name: kubelet
           hostPath:
-            path: /var/lib/kubelet/pods
+            path: /var/lib/kubelet/
         - name: cgroup
           hostPath:
             path: /sys/fs/cgroup
@@ -122,22 +123,8 @@ spec:
           hostPath:
             type: Directory
             path: /proc
-        - name: nfs
+        - name: kuscale
           hostPath:
             type: Directory
-            path: /home/sslab/nfs
+            path: /home/sslab/KuScale
         
----
-kind: Service
-apiVersion: v1
-metadata:
-  name: kuscale-svc
-  namespace: default
-spec:
-  selector:
-    name: kuscale-ds
-  ports:
-  - name: kuscale-svc
-    protocol: TCP
-    port: 9091
-    targetPort: 9091

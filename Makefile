@@ -69,3 +69,16 @@ watch-pod:
 	
 clean:
 	rm -rf $(BIN_DIR)
+
+monitoring:
+	kubectl apply -f ./deploy/monitoring/namespace.yaml
+	kubectl apply -f ./deploy/monitoring/
+
+monitoring-down:
+	kubectl delete -f ./deploy/monitoring/
+
+test3:
+	kubectl apply -f ./deploy/test3.yaml
+
+test3d:
+	kubectl delete -f ./deploy/test3.yaml

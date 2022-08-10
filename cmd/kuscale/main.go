@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"time"
 
 	"k8s.io/klog"
 
@@ -74,7 +75,7 @@ func main() {
 	// go bpfWatcher.Run(stopCh)
 
 	// Run KU Device Plugin
-	tokenManager := kutokenmanager.Newkutokenmanager(
+	tokenManager := kutokenmanager.NewKuTokenManager(
 		"kuscale.com/token", 10,
 		pluginapi.DevicePluginPath+"dorry-token.sock")
 	go tokenManager.Run(stopCh)
@@ -108,7 +109,8 @@ func main() {
 	klog.V(4).Info("Started Kuscale")
 	<-stopCh
 	klog.V(4).Info("Shutting All Down")
-	monitor.WaitAllContainers()
+	// monitor.WaitAllContainers()
+	time.Sleep(time.Second * 2)
 	klog.V(4).Info("Shutted All Down")
 
 }

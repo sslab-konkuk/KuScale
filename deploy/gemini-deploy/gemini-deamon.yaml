@@ -27,16 +27,27 @@ spec:
           mountPath: /kubeshare/library
       containers:
       - name: gemini-scheduler
-        image: guswns531/kubeshare-gemini-scheduler:v2.1
+        # image: guswns531/kubeshare-gemini-scheduler:v2.1
+        image: guswns531/kubeshare-gemini-scheduler:v2.6
         # command: ['sleep', '100000']
         # command:  ["/launcher-multigpus.sh", "/kubeshare/scheduler/config", "/kubeshare/scheduler/ipc"]
         # command:  ["./gem-schd", "-p", "/kubeshare/scheduler/ipc", "-f", "/kubeshare/scheduler/config/resource.conf"]
-        command:  ["./gem-schd", "-p", "/kubeshare/scheduler/ipc", "-f", "/kubeshare/scheduler/config/resource.conf", "-w", "1000.0"]
+        # command:  ["./gem-schd", "-p", "/kubeshare/scheduler/ipc", "-f", "/kubeshare/scheduler/config/resource.conf", "-w", "1000.0"]
+        command:  ["./gem-schd", "-p", "/kubeshare/scheduler/ipc", "-f", "/sys/kernel/gpu/gemini/resource_conf", "-w", "1000.0"]
+        securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - all
         volumeMounts:
         - name: "kubeshare-scheduler"
           mountPath: "/kubeshare/scheduler"
         - name: "kubeshare-library"
           mountPath: "/kubeshare/library"
+        - name: "resource-conf"
+          mountPath: "/sys/kernel/gpu/gemini"
+        - name: "ids"
+          mountPath: "/sys/kernel/gpu/IDs"
       volumes:
       - name: "kubeshare-scheduler"
         hostPath:
@@ -44,4 +55,9 @@ spec:
       - name: "kubeshare-library"
         hostPath:
           path: "/kubeshare/library"
-
+      - name: "resource-conf"
+        hostPath:
+          path: "/sys/kernel/gpu/gemini"
+      - name: "ids"
+        hostPath:
+          path: "/sys/kernel/gpu/IDs"

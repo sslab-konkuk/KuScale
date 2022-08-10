@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test2-deployment
+  labels:
+    app: test2
+spec:
+  selector:
+    matchLabels:
+      app: test2
+  template:
+    metadata:
+      labels:
+        app: test2
+    spec:
+      hostIPC: true
+      containers:
+      - image: docker.io/guswns531/jobs:matrix-001
+        command:  ["sleep", "50000"]
+        name: test2
+        resources:
+          limits:
+            kuscale.com/token: 1
+        volumeMounts:
+          - name: shmdir
+            mountPath: /dev/shm             
+      volumes:
+        - name: shmdir
+          emptyDir:
+            medium: Memory
+            sizeLimit: "1G"
