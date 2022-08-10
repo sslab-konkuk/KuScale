@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/client"
+	kuwatcher "github.com/sslab-konkuk/KuScale/pkg/kuwatcher"
 	"k8s.io/klog"
 )
 
@@ -75,19 +76,21 @@ func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 	klog.V(5).Info("UpdateNewPod ", podName)
 	podInfo := NewPodInfo(podName, []ResourceName{"CPU", "GPU"})
 
+	podInfo.RIs["CPU"].path, podInfo.RIs["GPU"].path = m.getPath(podName)
+
 	podInfo.RIs["CPU"].initLimit = cpuLimit
 	podInfo.RIs["GPU"].initLimit = gpuLimit
 	podInfo.totalToken = uint64(cpuLimit + 3*gpuLimit)
 
 	podInfo.RIs["CPU"].SetLimit(cpuLimit)
 	podInfo.RIs["GPU"].SetLimit(gpuLimit)
+	SetCpuLimit(podInfo, cpuLimit)
+	SetGpuLimit(podInfo, gpuLimit)
 
-	podInfo.imageName = "guswns531/jobs:matrix-001"
-	m.RunNewContainer(podInfo)
 	podInfo.podStatus = PodReady
-	podInfo.UpdateUsage(m.config.monitoringPeriod)
+	podInfo.UpdateUsage()
 	m.RunningPodMap[podName] = podInfo
-	writeGpuGeminiConfig(m.RunningPodMap)
+
 }
 
 func (m *Monitor) Monitoring() {
@@ -95,10 +98,14 @@ func (m *Monitor) Monitoring() {
 
 	for !m.stopFlag {
 		timer1 := time.NewTimer(time.Second * time.Duration(m.config.monitoringPeriod))
-		m.MonitorPod()
-		if !m.config.monitoringMode {
-			m.Autoscale()
+		podName, _ := kuwatcher.Scan()
+		if podName != "" {
+			m.UpdateNewPod(podName, 200, 60)
 		}
+		m.MonitorPod()
+		// if !m.config.monitoringMode {
+		// 	m.Autoscale()
+		// }
 		<-timer1.C
 	}
 }
@@ -107,7 +114,16 @@ func (m *Monitor) MonitorPod() {
 
 	for name, pi := range m.RunningPodMap {
 
-		if pi.podStatus == PodReady && CheckPodPath(pi) {
+		if pi.podStatus == PodReady && !CheckPodPath(pi) {
+			klog.V(5).Info(("Ready but no Path"))
+			pi.RIs["CPU"].path, pi.RIs["GPU"].path = m.getPath(name)
+			m.RunningPodMap[name] = pi
+			continue
+		} else if pi.podStatus == PodReady && CheckPodPath(pi) {
+			klog.V(5).Info(("Ready and Start"))
+			pi.UpdateUsage()
+			SetCpuLimit(pi, 200)
+			SetGpuLimit(pi, 60)
 			pi.podStatus = PodRunning
 		} else if pi.podStatus == PodRunning && !CheckPodPath(pi) {
 			klog.V(4).Info("Completed ", name)
@@ -122,18 +138,17 @@ func (m *Monitor) MonitorPod() {
 		}
 
 		// Monitor Pod
-		pi.UpdateUsage(m.config.monitoringPeriod)
+		pi.UpdateUsage()
+		m.RunningPodMap[name] = pi
 
 		klog.V(5).Info(pi.PodName, " ", pi.RIs["CPU"].Usage(), pi.RIs["GPU"].Usage())
-		klog.V(5).Infof("%s, %.4f %.4f", pi.PodName, pi.RIs["CPU"].getCurrentUsage(), pi.RIs["GPU"].getCurrentUsage())
-		m.RunningPodMap[name] = pi
+		// klog.V(5).Infof("%s, %.4f %.4f", pi.PodName, pi.RIs["CPU"].getCurrentUsage(), pi.RIs["GPU"].getCurrentUsage())
+		// m.RunningPodMap[name] = pi
 	}
 }
 
 func (m *Monitor) Run(stopCh <-chan struct{}) {
 	m.ConnectDocker()
-	go m.UpdateNewPod("pod3", 100.0, 50.0)
-	go m.UpdateNewPod("pod4", 100.0, 50.0)
 
 	klog.V(4).Info("Starting Monitor")
 	go m.Monitoring()

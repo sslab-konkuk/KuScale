@@ -15,7 +15,6 @@
 package kumonitor
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -103,10 +102,12 @@ func GetCpuAcctUsage(cpuPath string) (uint64, int64) {
 
 func GetGpuAcctUsage(gpuPath string) (uint64, int64) {
 	now := time.Now().UnixNano()
-	dat, _ := ioutil.ReadFile(gpuPath)
-	read_line := strings.TrimSuffix(string(dat), "\n")
-	num1, _ := strconv.ParseFloat(read_line, 64)
-	return uint64(num1), now
+	return GetFileParamUint(gpuPath, "/total_runtime"), now
+
+	// dat, _ := ioutil.ReadFile(gpuPath)
+	// read_line := strings.TrimSuffix(string(dat), "\n")
+	// num1, _ := strconv.ParseFloat(read_line, 64)
+	// return uint64(num1), now
 }
 
 // func GetRxAcctUsage(pi *PodInfo) (uint64) {
@@ -126,6 +127,10 @@ func GetGpuAcctUsage(gpuPath string) (uint64, int64) {
 
 // /* Set Limit Functions */
 
+func UpdateGpu() {
+	setFileUint(0, "/sys/kernel/gpu/gemini", "/resource_conf")
+}
+
 func SetCpuLimit(pi *PodInfo, nextCpu float64) {
 	if nextCpu > 1000 || nextCpu < 0 {
 		return
@@ -135,41 +140,134 @@ func SetCpuLimit(pi *PodInfo, nextCpu float64) {
 	pi.RIs["CPU"].SetLimit(nextCpu)
 }
 
-// func SetGpuLimit(pi *PodInfo, nextGpu float64) {
-// 	if nextGpu > 1000 || nextGpu < 0 {
-// 		return
-// 	}
-// 	// setFileUint(uint64(nextGpu), pi.gpuPath, "/quota")
-// 	pi.RIs["GPU"].SetLimit(nextGpu)
-// }
+func SetGpuLimit(pi *PodInfo, nextGpu float64) {
+	if nextGpu > 1000 || nextGpu < 0 {
+		return
+	}
+	setFileUint(uint64(nextGpu)*10, pi.RIs["GPU"].path, "/gpu_limit")
+	setFileUint(uint64(nextGpu)*10, pi.RIs["GPU"].path, "/gpu_request")
+	UpdateGpu()
+	pi.RIs["GPU"].SetLimit(nextGpu)
+}
 
 // func SetRxLimit(pi *PodInfo, nextRx float64) {
 // 	UpdateIngressQdisc(uint64(nextRx) * miliRX, 2 * uint64(nextRx) * miliRX, pi.interfaceName)
 // 	pi.CI.RIs["RX"].SetLimit(nextRx)
 // }
 
-func writeGpuGeminiConfig(RunningPodMap PodInfoMap) {
+// func writeGpuGeminiConfig(RunningPodMap PodInfoMap) {
 
-	gpu_config_f, err := os.Create("/kubeshare/scheduler/config/resource.conf")
-	if err != nil {
-		klog.Errorf("Error when create config file on path: %s", "/kubeshare/scheduler/config/resource.conf")
-	}
+// 	gpu_config_f, err := os.Create("/kubeshare/scheduler/config/resource.conf")
+// 	if err != nil {
+// 		klog.Errorf("Error when create config file on path: %s", "/kubeshare/scheduler/config/resource.conf")
+// 	}
 
-	for name, pod := range RunningPodMap {
+// 	for name, pod := range RunningPodMap {
 
-		// minutil, maxutil, memlimit := pod_config[1], pod_config[2], pod_config[3]
-		// def := strings.Split(pod_config[0], "/")
-		// podname := def[1]
-		// klog.Infof("pod info[%d]: %s, %s, %s, %s, %s", i, def, podname, minutil, maxutil, memlimit)
-		maxutil := pod.RIs["GPU"].limit / 100
-		//pod key file
-		gpu_config_f.WriteString(fmt.Sprintf("[%s]\n", name))
-		// gpu_config_f.WriteString(fmt.Sprintf("clientid=%d\n", strings.Count(podlist, ",")))
-		// gpu_config_f.WriteString(fmt.Sprintf("MinUtil=%s\n", minutil))
-		gpu_config_f.WriteString(fmt.Sprintf("MaxUtil=%f\n", maxutil))
-		gpu_config_f.WriteString(fmt.Sprintf("MemoryLimit=%s\n", "10240MiB"))
-	}
+// 		// minutil, maxutil, memlimit := pod_config[1], pod_config[2], pod_config[3]
+// 		// def := strings.Split(pod_config[0], "/")
+// 		// podname := def[1]
+// 		// klog.Infof("pod info[%d]: %s, %s, %s, %s, %s", i, def, podname, minutil, maxutil, memlimit)
+// 		maxutil := pod.RIs["GPU"].limit / 100
+// 		//pod key file
+// 		gpu_config_f.WriteString(fmt.Sprintf("[%s]\n", name))
+// 		// gpu_config_f.WriteString(fmt.Sprintf("clientid=%d\n", strings.Count(podlist, ",")))
+// 		// gpu_config_f.WriteString(fmt.Sprintf("MinUtil=%s\n", minutil))
+// 		gpu_config_f.WriteString(fmt.Sprintf("MaxUtil=%f\n", maxutil))
+// 		gpu_config_f.WriteString(fmt.Sprintf("MemoryLimit=%s\n", "10240MiB"))
+// 	}
 
-	gpu_config_f.Sync()
-	gpu_config_f.Close()
-}
+// 	gpu_config_f.Sync()
+// 	gpu_config_f.Close()
+// }
+
+// func GetDevicePodInfoFromKubelet(pm PodMap) (bool, error) {
+// 	devicePods, err := getListOfPodsFromKubelet(podsocketPath)
+// 	if err != nil {
+// 		return false, fmt.Errorf("failed to get devices Pod information: %v", err)
+// 	}
+// 	new := updatePodMap(pm, *devicePods)
+
+// 	return new, nil
+// }
+
+// func getListOfPodsFromKubelet(socket string) (*podresourcesapi.ListPodResourcesResponse, error) {
+// 	conn, err := connectToServer(socket)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	defer conn.Close()
+
+// 	client := podresourcesapi.NewPodResourcesListerClient(conn)
+
+// 	ctx, cancel := context.WithTimeout(context.Background(), connectionTimeout)
+// 	defer cancel()
+
+// 	resp, err := client.List(ctx, &podresourcesapi.ListPodResourcesRequest{})
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failure getting pod resources %v", err)
+// 	}
+// 	return resp, nil
+// }
+
+// func connectToServer(socket string) (*grpc.ClientConn, error) {
+// 	ctx, cancel := context.WithTimeout(context.Background(), connectionTimeout)
+// 	defer cancel()
+
+// 	conn, err := grpc.DialContext(ctx, socket, grpc.WithInsecure(), grpc.WithBlock(),
+// 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(podResourcesMaxSize)),
+// 		grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
+// 			return net.DialTimeout("unix", addr, timeout)
+// 		}),
+// 	)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failure connecting to %s: %v", socket, err)
+// 	}
+// 	return conn, nil
+// }
+
+// func updatePodMap(pm PodMap, devicePods podresourcesapi.ListPodResourcesResponse) bool {
+// 	var new bool = false
+// 	var tokenSize = uint64(0)
+
+// 	for _, pod := range devicePods.GetPodResources() {
+// 		podName := pod.GetName()
+// 		if _, ok := pm[podName]; ok {
+// 			continue
+// 		}
+
+// 		if _, ok := CompletedPodMap[podName]; ok {
+// 			continue
+// 		}
+
+// 		for _, container := range pod.GetContainers() {
+// 			for _, device := range container.GetDevices() {
+// 				resourceName := device.GetResourceName()
+// 				if resourceName == resourceToken {
+// 					tokenSize = tokenSize + 1
+// 				}
+// 			}
+// 			if tokenSize > 0 {
+// 				// // println("Pod %s, Container %s ",pod.GetName(), container.GetName(), resourceToken, check)
+
+// 				// PodInfo := PodInfo{
+// 				// 	podName:       podName,
+// 				// 	namespace:     pod.GetNamespace(),
+// 				// 	containerName: container.GetName(),
+// 				// 	totalToken:    tokenSize,
+// 				// 	initFlag:      false,
+// 				// 	cpuPath:       getCpuPath(podName),
+// 				// 	gpuPath:       getGpuPath(podName),
+// 				// 	rxPath:        path.Join("/home/proc/", getPid(podName), "/net/dev"),
+// 				// 	interfaceName: getInterfaceName(podName),
+// 				// 	iterModPath:   getIterModPath(podName),
+// 				// }
+// 				// pm[podName] = PodInfo
+// 				// new = true
+// 				// tokenSize = 0
+// 			}
+// 		}
+// 	}
+
+// 	return new
+// }

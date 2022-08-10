@@ -1,0 +1,13 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: kuscale-svc
+  namespace: default
+spec:
+  selector:
+    name: kuscale-ds
+  ports:
+  - name: kuscale-svc
+    protocol: TCP
+    port: 9091
+    targetPort: 9091

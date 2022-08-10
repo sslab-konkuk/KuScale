@@ -44,15 +44,30 @@ func (ec ExporterCollector) Describe(ch chan<- *prometheus.Desc) {
 func (ec ExporterCollector) collect() error {
 	for _, pod := range ec.connectedMonitor.RunningPodMap {
 		name := pod.PodName
-		id := pod.ID[:12]
+		id := pod.PodName
 		node := ec.nodeName
 
-		for rn, ri := range pod.RIs {
-			ec.exporter.Limit.WithLabelValues([]string{string(rn), id, node}...).Add(ri.Limit())
-			ec.exporter.Usage.WithLabelValues([]string{string(rn), id, node}...).Add(ri.Usage())
-			ec.exporter.AvgUsage.WithLabelValues([]string{string(rn), id, node}...).Add(ri.AvgUsage())
-			ec.exporter.AvgAvgUsage.WithLabelValues([]string{string(rn), id, node}...).Add(ri.AvgAvgUsage())
-		}
+		ri := pod.RIs["CPU"]
+		resourceName := "CPU"
+		ec.exporter.Limit.WithLabelValues([]string{resourceName, id, node}...).Add(ri.Limit())
+		ec.exporter.Usage.WithLabelValues([]string{resourceName, id, node}...).Add(ri.Usage())
+		ec.exporter.AvgUsage.WithLabelValues([]string{resourceName, id, node}...).Add(ri.AvgUsage())
+		ec.exporter.AvgAvgUsage.WithLabelValues([]string{resourceName, id, node}...).Add(ri.AvgAvgUsage())
+
+		ri2 := pod.RIs["GPU"]
+		resourceName2 := "GPU"
+		ec.exporter.Limit.WithLabelValues([]string{resourceName2, id, node}...).Add(30)
+		ec.exporter.Usage.WithLabelValues([]string{resourceName2, id, node}...).Add(20)
+		ec.exporter.AvgUsage.WithLabelValues([]string{resourceName2, id, node}...).Add(40)
+		ec.exporter.AvgAvgUsage.WithLabelValues([]string{resourceName2, id, node}...).Add(ri2.AvgAvgUsage())
+
+		// for rn, ri := range pod.RIs {
+		// 	resourceName := string(rn)
+		// 	ec.exporter.Limit.WithLabelValues([]string{resourceName, id, node}...).Add(ri.Limit())
+		// 	ec.exporter.Usage.WithLabelValues([]string{resourceName, id, node}...).Add(ri.Usage())
+		// 	ec.exporter.AvgUsage.WithLabelValues([]string{resourceName, id, node}...).Add(ri.AvgUsage())
+		// 	ec.exporter.AvgAvgUsage.WithLabelValues([]string{resourceName, id, node}...).Add(ri.AvgAvgUsage())
+		// }
 
 		ec.exporter.UpdateCount.WithLabelValues([]string{name, id, node}...).Add(float64(pod.UpdateCount))
 	}

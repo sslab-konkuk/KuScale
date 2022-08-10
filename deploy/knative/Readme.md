@@ -185,3 +185,11 @@ Knative previously integrated with VPA Alpha. Now it needs to reintegrate with V
 Additionally, the next Revision should learn from the previous. But it must not taint the previous Revision's state. For example, when a Service is in runLatest mode, the next Revision should start from the resource recommendations of the previous. Then VPA will apply learning on top of that to adjust for changes in the application behavior. However if the next Revision goes crazy because of bad recommendations, a quick rollback to the previous should pick up the good ones. Again, this requires a little bit of bookkeeping in Knative.
 
 Project: Project 18
+
+
+## DELETE
+
+kubectl delete -f serving-default-domain.yaml
+kubectl delete -f deploy/knative/kourier.yaml
+kubectl delete -f deploy/knative/serving-crds.yaml
+kubectl delete -f deploy/knative/serving-core.yaml 

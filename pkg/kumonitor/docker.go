@@ -2,16 +2,14 @@ package kumonitor
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
+	"k8s.io/klog"
 
 	// "github.com/docker/docker/api/types/filters"
 
-	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
-	"k8s.io/klog"
 )
 
 // https://pkg.go.dev/github.com/docker/docker/api/types/container#HostConfig
@@ -27,112 +25,153 @@ func (m *Monitor) ConnectDocker() {
 	m.ctx, m.cli = ctx, cli
 }
 
-func (m *Monitor) RunNewContainer(podInfo *PodInfo) {
+func (m *Monitor) getPath(podName string) (string, string) {
 
-	out, err := m.cli.ImagePull(m.ctx, podInfo.imageName, types.ImagePullOptions{})
+	filterlabel := "io.kubernetes.pod.name=" + podName
+	filters := filters.NewArgs()
+	filters.Add("label", filterlabel)
+	klog.V(5).Info("GETPATH", podName)
+
+	containers, err := m.cli.ContainerList(m.ctx, types.ContainerListOptions{Filters: filters})
 	if err != nil {
 		panic(err)
 	}
-	defer out.Close()
-	// io.Copy(os.Stdout, out)
-	// klog.V(4).Info(out)
 
-	hostConfig := container.HostConfig{}
-	var mounts []mount.Mount
-	mount1 := mount.Mount{
-		Type:   mount.TypeBind,
-		Source: "/kubeshare/library/",
-		Target: "/kubeshare/library/",
-	}
-	mounts = append(mounts, mount1)
-	mount2 := mount.Mount{
-		Type:   mount.TypeBind,
-		Source: "/kubeshare/scheduler/ipc/",
-		Target: "/kubeshare/scheduler/ipc/",
-	}
-	mounts = append(mounts, mount2)
-	hostConfig.Mounts = mounts
-	cpu := podInfo.RIs["CPU"].limit
-	if cpu > 0 {
-		var resources container.Resources
-		resources.CPUShares = int64(cpu / 100 * 1024)
-		resources.CPUQuota = int64(cpu * 10000)
-		resources.CPUPeriod = 1000000
-		hostConfig.Resources = resources
+	if len(containers) == 0 {
+		klog.V(5).Info("Zero")
+
+		return "", ""
 	}
 
-	resp, err := m.cli.ContainerCreate(m.ctx, &container.Config{
-		Image: podInfo.imageName,
-		// Cmd:   []string{"python3", "detect.py", "--weights", "yolov5l6.pt", "--source", "2160p_30fps_30s.mp4", "--nosave", "--img", "3280"},
-		// Cmd:   []string{"./matrix", "4096", "4000"},
-		Cmd:   []string{"./excute.sh"},
-		Tty:   false,
-		Env: []string{"LD_PRELOAD=/kubeshare/library/libgemhook.so.1",
-			"LD_LIBRARY_PATH=/kubeshare/library/:$LD_LIBRARY_PATH",
-			"GEMINI_IPC_DIR=/kubeshare/scheduler/ipc/",
-			fmt.Sprintf("GEMINI_GROUP_NAME=%s", podInfo.PodName)},
-		Labels: map[string]string{
-			"owner": "kuscale",
-		},
-	}, &hostConfig, nil, nil, "")
+	data, err := m.cli.ContainerInspect(m.ctx, containers[0].ID)
 
 	if err != nil {
 		panic(err)
 	}
 
-	if err := m.cli.ContainerStart(m.ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
-		panic(err)
-	}
+	cgroupPath := "/home/cgroup/cpu/kubepods.slice/kubepods-besteffort.slice/" + data.HostConfig.CgroupParent + "/docker-" + containers[0].ID + ".scope"
 
-	klog.V(5).Info("Created Container: ", podInfo.PodName, " ID: ", resp.ID)
-	podInfo.ID = resp.ID
-	m.podIDtoNameMap[podInfo.ID] = podInfo.PodName
-	podInfo.RIs["CPU"].path = getCpuPath(podInfo.ID)
-	podInfo.RIs["GPU"].path = fmt.Sprintf("/kubeshare/scheduler/total-usage-%s", podInfo.PodName)
+	var gpuPath string
 
-	// statusCh, errCh := m.cli.ContainerWait(m.ctx, resp.ID, container.WaitConditionNotRunning)
-	// select {
-	// case err := <-errCh:
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// case <-statusCh:
-	// }
-}
-
-func (m *Monitor) StopContainer(podInfo *PodInfo) {
-	if err := m.cli.ContainerStop(m.ctx, podInfo.ID, nil); err != nil {
-		panic(err)
-	}
-}
-
-func (m *Monitor) WaitContainer(podInfo *PodInfo) {
-	statusCh, errCh := m.cli.ContainerWait(m.ctx, podInfo.ID, container.WaitConditionNotRunning)
-	select {
-	case err := <-errCh:
-		if err != nil {
-			panic(err)
+	for _, m := range data.Mounts {
+		if m.Destination == "/ku-gpu" {
+			gpuPath = m.Source
 		}
-	case <-statusCh:
 	}
+	// fmt.Println(data.Mounts[0].Source)
+	// gpuPath := "/sys/kernel/gpu/Ids/0"
+
+	klog.V(5).Info("Cgroup Path:", cgroupPath, ",  gpuPath : ", gpuPath)
+
+	return cgroupPath, gpuPath
 }
 
-func (m *Monitor) WaitAllContainers() {
-	for name, pi := range m.RunningPodMap {
-		klog.V(4).Info("Stoping Container : ", name)
-		m.StopContainer(pi)
-		klog.V(4).Info("Stoped Container : ", name)
-		m.WaitContainer(pi)
-	}
-}
+// func (m *Monitor) RunNewContainer(podInfo *PodInfo) {
 
-// func getCpuPath(ctx context.Context, cli *client.Client, podName string) string {
-func getCpuPath(ID string) string {
-	cgroupPath := "/home/cgroup/cpu/system.slice/docker-" + ID + ".scope"
-	// cgroupPath := "/sys/fs/cgroup/cpu/system.slice/docker-" + ID + ".scope"
-	klog.V(5).Info("getCPUPath ", ID, " ", cgroupPath)
-	return cgroupPath
-}
+// 	out, err := m.cli.ImagePull(m.ctx, podInfo.imageName, types.ImagePullOptions{})
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	defer out.Close()
+// 	// io.Copy(os.Stdout, out)
+// 	// klog.V(4).Info(out)
+
+// 	hostConfig := container.HostConfig{}
+// 	var mounts []mount.Mount
+// 	mount1 := mount.Mount{
+// 		Type:   mount.TypeBind,
+// 		Source: "/kubeshare/library/",
+// 		Target: "/kubeshare/library/",
+// 	}
+// 	mounts = append(mounts, mount1)
+// 	mount2 := mount.Mount{
+// 		Type:   mount.TypeBind,
+// 		Source: "/kubeshare/scheduler/ipc/",
+// 		Target: "/kubeshare/scheduler/ipc/",
+// 	}
+// 	mounts = append(mounts, mount2)
+// 	hostConfig.Mounts = mounts
+// 	cpu := podInfo.RIs["CPU"].limit
+// 	if cpu > 0 {
+// 		var resources container.Resources
+// 		resources.CPUShares = int64(cpu / 100 * 1024)
+// 		resources.CPUQuota = int64(cpu * 10000)
+// 		resources.CPUPeriod = 1000000
+// 		hostConfig.Resources = resources
+// 	}
+
+// 	resp, err := m.cli.ContainerCreate(m.ctx, &container.Config{
+// 		Image: podInfo.imageName,
+// 		// Cmd:   []string{"python3", "detect.py", "--weights", "yolov5l6.pt", "--source", "2160p_30fps_30s.mp4", "--nosave", "--img", "3280"},
+// 		// Cmd:   []string{"./matrix", "4096", "4000"},
+// 		Cmd: []string{"./excute.sh"},
+// 		Tty: false,
+// 		Env: []string{"LD_PRELOAD=/kubeshare/library/libgemhook.so.1",
+// 			"LD_LIBRARY_PATH=/kubeshare/library/:$LD_LIBRARY_PATH",
+// 			"GEMINI_IPC_DIR=/kubeshare/scheduler/ipc/",
+// 			fmt.Sprintf("GEMINI_GROUP_NAME=%s", podInfo.PodName)},
+// 		Labels: map[string]string{
+// 			"owner": "kuscale",
+// 		},
+// 	}, &hostConfig, nil, nil, "")
+
+// 	if err != nil {
+// 		panic(err)
+// 	}
+
+// 	if err := m.cli.ContainerStart(m.ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
+// 		panic(err)
+// 	}
+
+// 	klog.V(5).Info("Created Container: ", podInfo.PodName, " ID: ", resp.ID)
+// 	podInfo.ID = resp.ID
+// 	m.podIDtoNameMap[podInfo.ID] = podInfo.PodName
+// 	podInfo.RIs["CPU"].path = getCpuPath(podInfo.ID)
+// 	podInfo.RIs["GPU"].path = fmt.Sprintf("/kubeshare/scheduler/total-usage-%s", podInfo.PodName)
+
+// 	// statusCh, errCh := m.cli.ContainerWait(m.ctx, resp.ID, container.WaitConditionNotRunning)
+// 	// select {
+// 	// case err := <-errCh:
+// 	// 	if err != nil {
+// 	// 		panic(err)
+// 	// 	}
+// 	// case <-statusCh:
+// 	// }
+// }
+
+// func (m *Monitor) StopContainer(podInfo *PodInfo) {
+// 	if err := m.cli.ContainerStop(m.ctx, podInfo.ID, nil); err != nil {
+// 		panic(err)
+// 	}
+// }
+
+// func (m *Monitor) WaitContainer(podInfo *PodInfo) {
+// 	statusCh, errCh := m.cli.ContainerWait(m.ctx, podInfo.ID, container.WaitConditionNotRunning)
+// 	select {
+// 	case err := <-errCh:
+// 		if err != nil {
+// 			panic(err)
+// 		}
+// 	case <-statusCh:
+// 	}
+// }
+
+// func (m *Monitor) WaitAllContainers() {
+// 	for name, pi := range m.RunningPodMap {
+// 		klog.V(4).Info("Stoping Container : ", name)
+// 		m.StopContainer(pi)
+// 		klog.V(4).Info("Stoped Container : ", name)
+// 		m.WaitContainer(pi)
+// 	}
+// }
+
+// // func getCpuPath(ctx context.Context, cli *client.Client, podName string) string {
+// func getCpuPath(ID string) string {
+// 	cgroupPath := "/home/cgroup/cpu/system.slice/docker-" + ID + ".scope"
+// 	// cgroupPath := "/sys/fs/cgroup/cpu/system.slice/docker-" + ID + ".scope"
+// 	klog.V(5).Info("getCPUPath ", ID, " ", cgroupPath)
+// 	return cgroupPath
+// }
 
 // func getCpuPath(ctx context.Context, cli *client.Client, podName string) string {
 // filterlabel := "io.kubernetes.pod.name=" + podName
