@@ -9,11 +9,12 @@ spec:
       restartPolicy: Never
       containers:
       # - image: docker.io/guswns531/jobs:yolov5-flask-004
-      - image: docker.io/guswns531/jobs:matrix-001
+      - image: docker.io/guswns531/jobs:matrix-004
         name: test4
         # command:  ["/bin/bash", "-c", "python", "restapi.py", "--port=5000"]
         # command:  ["sleep", "50000"]
-        command:  ["./matrix", "2048", "2000"]
+        command:  ["./time", "./matrix", "2048", "2000"]
+        # command:  ["./matrix", "2048", "2000"]
         resources:
           limits:
             kuscale.com/token: 1

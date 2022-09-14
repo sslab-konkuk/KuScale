@@ -26,10 +26,11 @@ import (
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 
 	// kucontroller "github.com/sslab-konkuk/KuScale/pkg/kucontroller"
+
+	bpfwatcher "github.com/sslab-konkuk/KuScale/pkg/bpfwatcher"
 	kuexporter "github.com/sslab-konkuk/KuScale/pkg/kuexporter"
-	kumonitor "github.com/sslab-konkuk/KuScale/pkg/kumonitor"
+	"github.com/sslab-konkuk/KuScale/pkg/kumonitor"
 	kutokenmanager "github.com/sslab-konkuk/KuScale/pkg/kutokenmanager"
-	// kuwatcher "github.com/sslab-konkuk/KuScale/pkg/kuwatcher"
 	// "github.com/sslab-konkuk/KuScale/pkg/kumonitor/docker"
 )
 
@@ -49,7 +50,7 @@ func init() {
 	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
 	flag.IntVar(&threadNum, "threadness", 1, "The number of worker threads.")
 
-	flag.IntVar(&monitoringPeriod, "MonitoringPeriod", 1, "MonitoringPeriod")
+	flag.IntVar(&monitoringPeriod, "MonitoringPeriod", 2, "MonitoringPeriod")
 	flag.IntVar(&windowSize, "WindowSize", 15, "WindowSize")
 	flag.StringVar(&nodeName, "NodeName", "node4", "NodeName")
 	flag.BoolVar(&monitoringMode, "MonitoringMode", true, "MonitoringMode")
@@ -70,9 +71,9 @@ func main() {
 		go kuexporter.ExporterRun(monitor, nodeName, stopCh)
 	}
 
-	// // Run Ku BPF Watcher
-	// bpfWatcher := kuwatcher.NewbpfWatcher()
-	// go bpfWatcher.Run(stopCh)
+	// Run Ku BPF Watcher
+	bpfWatcher := bpfwatcher.NewbpfWatcher()
+	go bpfWatcher.Run(monitor, stopCh)
 
 	// Run KU Device Plugin
 	tokenManager := kutokenmanager.NewKuTokenManager(

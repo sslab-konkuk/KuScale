@@ -19,21 +19,22 @@ spec:
       tolerations:
       - key: node-role.kubernetes.io/master
         effect: NoSchedule
-      initContainers:
-      - name: gemini-hook-init
-        image: guswns531/kubeshare-gemini-hook-init:v2.1
-        volumeMounts:
-        - name: "kubeshare-library"
-          mountPath: /kubeshare/library
+      # initContainers:
+      # - name: gemini-hook-init
+      #   image: guswns531/kubeshare-gemini-hook-init:v2.1
+      #   volumeMounts:
+      #   - name: "kubeshare-library"
+      #     mountPath: /kubeshare/library
       containers:
       - name: gemini-scheduler
         # image: guswns531/kubeshare-gemini-scheduler:v2.1
-        image: guswns531/kubeshare-gemini-scheduler:v2.6
+        image: guswns531/kubeshare-gemini-scheduler:v2.7
         # command: ['sleep', '100000']
         # command:  ["/launcher-multigpus.sh", "/kubeshare/scheduler/config", "/kubeshare/scheduler/ipc"]
         # command:  ["./gem-schd", "-p", "/kubeshare/scheduler/ipc", "-f", "/kubeshare/scheduler/config/resource.conf"]
         # command:  ["./gem-schd", "-p", "/kubeshare/scheduler/ipc", "-f", "/kubeshare/scheduler/config/resource.conf", "-w", "1000.0"]
         command:  ["./gem-schd", "-p", "/kubeshare/scheduler/ipc", "-f", "/sys/kernel/gpu/gemini/resource_conf", "-w", "1000.0"]
+        command:  ["./gem-schd", "-p", "/kubeshare/scheduler/ipc", "-f", "/sys/kernel/gpu/gemini/resource_conf", "-w", "10.0"]
         securityContext:
             privileged: true
             capabilities:
