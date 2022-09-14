@@ -25,12 +25,11 @@ func (m *Monitor) ConnectDocker() {
 	m.ctx, m.cli = ctx, cli
 }
 
-func (m *Monitor) getPath(podName string) (string, string) {
+func (m *Monitor) getPath(podName string) (string, string, int) {
 
 	filterlabel := "io.kubernetes.pod.name=" + podName
 	filters := filters.NewArgs()
 	filters.Add("label", filterlabel)
-	klog.V(5).Info("GETPATH", podName)
 
 	containers, err := m.cli.ContainerList(m.ctx, types.ContainerListOptions{Filters: filters})
 	if err != nil {
@@ -38,15 +37,19 @@ func (m *Monitor) getPath(podName string) (string, string) {
 	}
 
 	if len(containers) == 0 {
-		klog.V(5).Info("Zero")
-
-		return "", ""
+		klog.V(5).Info("There is no ", podName)
+		return "", "", 0
 	}
 
 	data, err := m.cli.ContainerInspect(m.ctx, containers[0].ID)
 
 	if err != nil {
 		panic(err)
+	}
+
+	klog.V(5).Info(podName, " data.State.Status : ", data.State.Status)
+	if data.State.Status == "exited" {
+		return "", "", 2
 	}
 
 	cgroupPath := "/home/cgroup/cpu/kubepods.slice/kubepods-besteffort.slice/" + data.HostConfig.CgroupParent + "/docker-" + containers[0].ID + ".scope"
@@ -63,7 +66,7 @@ func (m *Monitor) getPath(podName string) (string, string) {
 
 	klog.V(5).Info("Cgroup Path:", cgroupPath, ",  gpuPath : ", gpuPath)
 
-	return cgroupPath, gpuPath
+	return cgroupPath, gpuPath, 1
 }
 
 // func (m *Monitor) RunNewContainer(podInfo *PodInfo) {

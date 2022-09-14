@@ -28,13 +28,10 @@ const miliGPU = 10
 
 type ResourceName string
 type acctUsageAndTime struct {
-	timeStamp int64
+	timeStamp uint64
 	acctUsage uint64
 }
 
-var defaultResources = []string{"CPU", "GPU", "RX"}
-
-// Resource Info are considered by KuScale
 type ResourceInfo struct {
 	name      ResourceName
 	path      string
@@ -56,16 +53,33 @@ func (ri *ResourceInfo) Init(name ResourceName, scale int, price float64) {
 	ri.name, ri.miliScale, ri.price = name, scale, price
 	ri.acctUsage = append(ri.acctUsage, 0)
 	ri.limit, ri.usage, ri.avgUsage, ri.avgUsage, ri.avgAvgUsage = 0, 0, 0, 0, 0
-	ri.test = append(ri.test, acctUsageAndTime{timeStamp: time.Now().UnixNano(), acctUsage: 0})
+	now, _ := GetMtime()
+	ri.test = append(ri.test, acctUsageAndTime{timeStamp: now, acctUsage: 0})
+	// ri.test = append(ri.test, acctUsageAndTime{timeStamp: 0, acctUsage: 0})
 
 }
 
-func (ri *ResourceInfo) Limit() float64         { return ri.limit }
-func (ri *ResourceInfo) Usage() float64         { return math.Round(ri.usage) }
-func (ri *ResourceInfo) AvgUsage() float64      { return ri.avgUsage }
-func (ri *ResourceInfo) AvgAvgUsage() float64   { return ri.avgAvgUsage }
-func (ri *ResourceInfo) Price() float64         { return ri.price }
-func (ri *ResourceInfo) SetLimit(limit float64) { ri.limit = limit }
+func (ri *ResourceInfo) Limit() float64       { return ri.limit }
+func (ri *ResourceInfo) Usage() float64       { return math.Round(ri.usage) }
+func (ri *ResourceInfo) AvgUsage() float64    { return ri.avgUsage }
+func (ri *ResourceInfo) AvgAvgUsage() float64 { return ri.avgAvgUsage }
+func (ri *ResourceInfo) Price() float64       { return ri.price }
+func (ri *ResourceInfo) SetLimit(limit float64) {
+	// klog.V(5).Info("Set ", ri.name, ": ", limit)
+	switch ri.name {
+	case "CPU":
+		setFileUint(uint64(limit)*1000, ri.path, "/cpu.cfs_quota_us")
+		ri.limit = limit
+		return
+	case "GPU":
+		setFileUint(uint64(limit)*10, ri.path, "/gpu_limit")
+		setFileUint(uint64(limit)*10, ri.path, "/gpu_request")
+		UpdateGemini()
+		ri.limit = limit
+		return
+	}
+}
+
 func (ri *ResourceInfo) GetAcctUsage() uint64 {
 
 	switch ri.name {
@@ -108,11 +122,14 @@ const (
 
 // Pod Info are managed by KuScale
 type PodInfo struct {
-	PodName    string
-	ID         string
-	imageName  string
-	podStatus  PodStatus
-	totalToken uint64
+	PodName       string
+	ID            string
+	imageName     string
+	podStatus     PodStatus
+	reservedToken uint64
+	totalToken    float64
+	expectedToken float64
+	lastSetTime   int64
 
 	// pid           string
 	// interfaceName string
@@ -121,13 +138,13 @@ type PodInfo struct {
 	RNs []ResourceName
 	RIs map[ResourceName]*ResourceInfo
 
-	// Update Count from KuScale
-	UpdateCount int
+	UpdateCount int // Update Count from KuScale
+
 }
 
 func NewPodInfo(podName string, RNs []ResourceName) *PodInfo {
 
-	klog.V(5).Infof("Makeing New Pod Info %s", podName)
+	klog.V(5).Infof("Makeing New Pod Info of %s", podName)
 	podInfo := PodInfo{
 		PodName:   podName,
 		podStatus: PodInitializing,
@@ -147,7 +164,7 @@ func NewPodInfo(podName string, RNs []ResourceName) *PodInfo {
 		podInfo.RIs[name] = &ri
 	}
 
-	klog.V(5).Infof("Made New Pod Info %s", podName)
+	klog.V(5).Infof("Made New Pod Info of %s", podName)
 	return &podInfo
 }
 
@@ -159,4 +176,21 @@ func (pi *PodInfo) UpdateUsage() {
 		ri.avgUsage = (7*ri.avgUsage + ri.usage) / 8
 		ri.avgAvgUsage = (7*ri.avgAvgUsage + ri.avgUsage) / 8
 	}
+}
+
+func (pi *PodInfo) SetInitLimit() {
+	for _, ri := range pi.RIs {
+		ri.SetLimit(ri.initLimit)
+	}
+}
+
+func (pi *PodInfo) SetLimit(cpuLimit, gpuLimit float64) {
+	klog.V(5).Info("SetLimit ", pi.PodName, " CPU: ", cpuLimit, ", GPU: ", gpuLimit)
+	if pi.RIs["CPU"].Limit() == cpuLimit && pi.RIs["GPU"].Limit() == gpuLimit {
+		return
+	}
+	pi.RIs["CPU"].SetLimit(cpuLimit)
+	pi.RIs["GPU"].SetLimit(gpuLimit)
+	pi.UpdateCount = pi.UpdateCount + 1
+	pi.lastSetTime = time.Now().UnixNano()
 }

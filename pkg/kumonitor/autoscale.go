@@ -17,13 +17,27 @@ package kumonitor
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"k8s.io/klog"
 )
 
+var defaultResources = []string{"CPU", "GPU", "RX"}
+
+type Matrix [][]float64
+type MatrixInfo struct {
+	nmOfPods        int
+	nmOfResources   int
+	nmOfConditions  int
+	totalColumnSize int
+	totalRowSize    int
+	conditionStates []ConditionState
+	podNmMap        map[int]string
+}
+
 func printMatrix(matrix Matrix) {
 	for _, ai := range matrix {
-		klog.Info(ai)
+		klog.V(10).Info(ai)
 	}
 }
 
@@ -94,47 +108,47 @@ func gaussJordan(matrix0 Matrix, columnSize, rowSize int) ([]float64, error) {
 
 }
 
-type Matrix [][]float64
-type MatrixInfo struct {
-	nmOfPods        int
-	nmOfResources   int
-	nmOfConditions  int
-	totalColumnSize int
-	totalRowSize    int
-}
-
 func makeMatrix(pm PodInfoMap) (MatrixInfo, Matrix) {
 
-	// Number of Conditions : Token Condition(=nmOfPods) + Max Resource Condition(=nmOfResources) + Min Resource Conditions (=nmOfPods*nmOfResources)
-	nmOfPods := len(pm)
-	nmOfResources := 2
-	nmOfConditions := nmOfPods + nmOfResources + nmOfPods*nmOfResources
-	totalColumnSize := nmOfPods*nmOfResources + nmOfConditions
-	totalRowSize := totalColumnSize + 1
-	matrixInfo := MatrixInfo{nmOfPods, nmOfResources, nmOfConditions, totalColumnSize, totalRowSize}
-
-	/* Make Matrix */
-	m := make(Matrix, totalColumnSize)
-	for i := 0; i < totalColumnSize; i++ {
-		row := make([]float64, totalRowSize)
-		m[i] = row
+	mi := MatrixInfo{}
+	mi.podNmMap = make(map[int]string)
+	podNm := 0
+	for name, pod := range pm {
+		if pod.podStatus == PodReady {
+			continue
+		}
+		mi.podNmMap[podNm] = name
+		podNm = podNm + 1
 	}
 
-	return matrixInfo, m
+	// Number of Conditions : Token Condition(=nmOfPods) + Max Resource Condition(=nmOfResources) + Min Resource Conditions (=nmOfPods*nmOfResources)
+	mi.nmOfPods = podNm
+	mi.nmOfResources = 2
+	mi.nmOfConditions = mi.nmOfPods + mi.nmOfResources + mi.nmOfPods*mi.nmOfResources
+	mi.totalColumnSize = mi.nmOfPods*mi.nmOfResources + mi.nmOfConditions
+	mi.totalRowSize = mi.totalColumnSize + 1
+
+	/* Make Matrix */
+	mt := make(Matrix, mi.totalColumnSize)
+	for i := 0; i < mi.totalColumnSize; i++ {
+		row := make([]float64, mi.totalRowSize)
+		mt[i] = row
+	}
+
+	return mi, mt
 }
 
 /* Slack Conditions */
-func (m *Monitor) fillSlackConditons(mI MatrixInfo, inputMatrix Matrix, podNmMap PodNmMap) {
+func (m *Monitor) fillSlackConditons(mI MatrixInfo, inputMatrix Matrix) {
 
-	podNm := 0
 	nmR := mI.nmOfResources
 	tRS := mI.totalRowSize
 
 	V1 := float64(10)
 	V2 := float64(1)
 
-	for name, pod := range m.RunningPodMap {
-		podNmMap[name] = podNm
+	for podNm, name := range mI.podNmMap {
+		pod := m.RunningPodMap[name]
 
 		/* SumAvg |A|^2 */
 		sumAvg := 0.
@@ -165,20 +179,18 @@ func (m *Monitor) fillSlackConditons(mI MatrixInfo, inputMatrix Matrix, podNmMap
 			S := postive(L - U)
 			inputMatrix[nmR*podNm+i][tRS-1] = 2*V2*L - S*W
 		}
-
-		podNm = podNm + 1
 	}
 }
 
 /* Resource Token Conditions */
-func (m *Monitor) fillTokenConditons(mI MatrixInfo, inputMatrix Matrix, podNmMap PodNmMap) {
+func (m *Monitor) fillTokenConditons(mI MatrixInfo, inputMatrix Matrix) {
 
 	nmP := mI.nmOfPods
 	nmR := mI.nmOfResources
 	tRS := mI.totalRowSize
 
-	for podName, pod := range m.RunningPodMap {
-		podNm := podNmMap[podName]
+	for podNm, name := range mI.podNmMap {
+		pod := m.RunningPodMap[name]
 
 		for i, name := range pod.RNs {
 			W := pod.RIs[name].Price()
@@ -186,7 +198,7 @@ func (m *Monitor) fillTokenConditons(mI MatrixInfo, inputMatrix Matrix, podNmMap
 			inputMatrix[nmR*nmP+podNm][nmR*podNm+i] = W
 		}
 
-		inputMatrix[nmR*nmP+podNm][tRS-1] = float64(pod.totalToken)
+		inputMatrix[nmR*nmP+podNm][tRS-1] = float64(pod.reservedToken)
 	}
 }
 
@@ -201,18 +213,6 @@ func (m *Monitor) fillMinConditions(mI MatrixInfo, inputMatrix Matrix, podNm, re
 	inputMatrix[minRow+i][i] = 1
 	inputMatrix[minRow+i][tRS-1] = 10.
 	inputMatrix[i][minRow+i] = 1
-
-	// /* Check Min Resource Condition */
-	// for i := 0; i < nmP * nmR; i++ {
-	// 	if (result[i] - 10) < -0.1 {
-	// 		/* Setup Min Resource Condition */
-
-	// 		inputMatrix[minRow + i][i] = 1
-	// 		inputMatrix[minRow + i][tRS-1] = 10.
-	// 		inputMatrix[i][minRow + i] = 1
-	// 		// goto gauss
-	// 	}
-	// }
 }
 
 func (m *Monitor) fillMaxConditions(mI MatrixInfo, inputMatrix Matrix, resourceNm int) {
@@ -220,7 +220,7 @@ func (m *Monitor) fillMaxConditions(mI MatrixInfo, inputMatrix Matrix, resourceN
 	nmP := mI.nmOfPods
 	nmR := mI.nmOfResources
 	tRS := mI.totalRowSize
-	max := []float64{600., 100., 10000.}
+	max := []float64{600., 100.}
 	maxResourceRow := nmP*nmR + nmP + resourceNm
 
 	for i := 0; i < nmP; i++ {
@@ -230,52 +230,173 @@ func (m *Monitor) fillMaxConditions(mI MatrixInfo, inputMatrix Matrix, resourceN
 	inputMatrix[maxResourceRow][tRS-1] = max[resourceNm]
 }
 
+type ConditionState struct {
+	MinOrMax     int
+	ResourceName int
+	PodNm        int
+}
+
 func checkConditions(mI MatrixInfo, inputMatrix Matrix, result []float64) (int, int, int) {
 
 	nmP := mI.nmOfPods
 	nmR := mI.nmOfResources
 	sum := make([]float64, nmR)
-	max := []float64{600., 100., 10000.}
+	max := []float64{600., 100.}
 
+	// Check Min Conditions
 	for i := 0; i < nmP; i++ {
 		for j := 0; j < nmR; j++ {
 			nm := i*nmR + j
 			sum[j] += result[nm]
 			if (result[nm] - 10) < -0.1 {
-				klog.Info("Min PodNm := ", i, "Resource := ", defaultResources[j])
-				return 1, i, j
+				klog.V(4).Info("Checked Min Condition PodNm := ", i, "Resource := ", defaultResources[j])
+				mI.conditionStates = append(mI.conditionStates, ConditionState{1, j, i})
 			}
 		}
 	}
 
+	// Check Max Conditions
 	for j := 0; j < nmR; j++ {
 		if (sum[j] - max[j]) > 0.1 {
-			klog.Info("MAX Resource := ", defaultResources[j])
-			return 2, 0, j
+			klog.V(4).Info("Checked MAX Condition Resource := ", defaultResources[j])
+			mI.conditionStates = append(mI.conditionStates, ConditionState{2, j, -1})
 		}
 	}
+
+	klog.V(4).Info("Conditions Summary ", mI.conditionStates)
 	return 0, 0, 0
 }
 
-type PodNmMap map[string]int
+func makeMatrix2(pm PodInfoMap) (MatrixInfo, Matrix) {
+
+	mi := MatrixInfo{}
+	mi.podNmMap = make(map[int]string)
+	podNm := 0
+	for name, pod := range pm {
+		if pod.podStatus == PodReady {
+			continue
+		}
+		mi.podNmMap[podNm] = name
+		podNm = podNm + 1
+	}
+
+	// Number of Conditions : Token Condition(=nmOfPods) + Max Resource Condition(=nmOfResources) + Min Resource Conditions (=nmOfPods*nmOfResources)
+	mi.nmOfPods = podNm
+	mi.nmOfResources = 2
+	mi.nmOfConditions = mi.nmOfPods + mi.nmOfResources
+	mi.totalColumnSize = mi.nmOfPods*mi.nmOfResources + mi.nmOfConditions
+	mi.totalRowSize = mi.totalColumnSize + 1
+
+	/* Make Matrix */
+	mt := make(Matrix, mi.totalColumnSize)
+	for i := 0; i < mi.totalColumnSize; i++ {
+		row := make([]float64, mi.totalRowSize)
+		mt[i] = row
+	}
+
+	return mi, mt
+}
+
+func (m *Monitor) fillreservedTokens(mI MatrixInfo, inputMatrix Matrix) {
+	nmR := mI.nmOfResources
+	tRS := mI.totalRowSize
+
+	V1 := float64(50)
+
+	for podNm, name := range mI.podNmMap {
+		pod := m.RunningPodMap[name]
+		currentTime := time.Now().UnixNano()
+		elaspedTime := currentTime - pod.lastSetTime
+		elaspedTimePerSecond := float64(elaspedTime) / 1000000000.
+		pod.totalToken = pod.totalToken + float64(pod.reservedToken)*elaspedTimePerSecond
+		for _, ri := range pod.RIs {
+			L, W := ri.Limit(), ri.Price()
+			pod.totalToken = pod.totalToken - W*L*elaspedTimePerSecond
+		}
+		pod.expectedToken = pod.totalToken + float64(pod.reservedToken)
+		m.RunningPodMap[name] = pod
+		klog.V(10).Info("Pod: ", name, " Total Token : ", pod.expectedToken)
+
+		for i := 0; i < nmR; i++ {
+			for j := 0; j < nmR; j++ {
+				if i == j {
+					inputMatrix[nmR*podNm+i][nmR*podNm+j] = 2 * V1
+				}
+			}
+		}
+
+		for i, name := range pod.RNs {
+			U := pod.RIs[name].Usage()
+			W := pod.RIs[name].Price()
+			inputMatrix[nmR*podNm+i][tRS-1] = 2*V1*U + pod.totalToken*W
+		}
+	}
+}
+
+/* Resource Token Conditions */
+func (m *Monitor) fillTokenConditons2(mI MatrixInfo, inputMatrix Matrix, podNm int) {
+
+	nmP := mI.nmOfPods
+	nmR := mI.nmOfResources
+	tRS := mI.totalRowSize
+
+	pod := m.RunningPodMap[mI.podNmMap[podNm]]
+
+	for i, name := range pod.RNs {
+		W := pod.RIs[name].Price()
+		inputMatrix[nmR*podNm+i][nmP*nmR+podNm] = W
+		inputMatrix[nmR*nmP+podNm][nmR*podNm+i] = W
+	}
+
+	inputMatrix[nmR*nmP+podNm][tRS-1] = float64(pod.expectedToken)
+
+}
+func (m *Monitor) checkTotalToken(mI MatrixInfo, result []float64) (bool, int) {
+
+	nmP := mI.nmOfPods
+	nmR := mI.nmOfResources
+
+	// Check Min Conditions
+	for i := 0; i < nmP; i++ {
+		sum := result[i*nmR] + 3*result[i*nmR+1]
+		if (sum - m.RunningPodMap[mI.podNmMap[i]].expectedToken) > 0.1 {
+			klog.V(10).Info("Exceed Total Token ", sum)
+			return true, i
+		}
+	}
+	klog.V(10).Info("Fine Total Token")
+	return false, 0
+}
 
 func (m *Monitor) Autoscale() {
-	if len(m.RunningPodMap) == 0 {
+
+	matrixInfo, matrix := makeMatrix(m.RunningPodMap)
+	if matrixInfo.nmOfPods == 0 {
+		klog.V(4).Info("matrixInfo.nmOfPods is Zero")
 		return
 	}
 
-	// test := 0
-	podNmMap := make(PodNmMap)
-	matrixInfo, matrix := makeMatrix(m.RunningPodMap)
-	m.fillSlackConditons(matrixInfo, matrix, podNmMap)
-	m.fillTokenConditons(matrixInfo, matrix, podNmMap)
-	// gauss:
-	// printMatrix(m)
+	m.fillreservedTokens(matrixInfo, matrix)
+
+	// m.fillSlackConditons(matrixInfo, matrix)
+	// m.fillTokenConditons(matrixInfo, matrix)
+
+gauss:
+	printMatrix(matrix)
+
 	result, err := gaussJordan(matrix, matrixInfo.totalColumnSize, matrixInfo.totalRowSize)
 	if err != nil {
 		klog.Info("Error = ", err)
 	}
 	klog.Info("Result = ", result)
+
+	t, k := m.checkTotalToken(matrixInfo, result)
+	if t == true {
+		m.fillTokenConditons2(matrixInfo, matrix, k)
+		goto gauss
+	}
+
+	// checkConditions(matrixInfo, matrix, result)
 	// ret, podNm, resourceNm := checkConditions(matrixInfo, matrix, result)
 	// if test == 6 {
 	// 	klog.Info("TOO Error")
@@ -289,31 +410,16 @@ func (m *Monitor) Autoscale() {
 	// 	goto gauss
 	// }
 
-	m.updatePodInfo(podNmMap, result)
+	m.updatePodInfo(matrixInfo, result)
 }
 
-func (m *Monitor) updatePodInfo(podNmMap PodNmMap, result []float64) {
+func (m *Monitor) updatePodInfo(mI MatrixInfo, result []float64) {
 
 	nmOfResources := 2
 
-	for name, pod := range m.RunningPodMap {
-		podNm := podNmMap[name]
-
-		if pod.UpdateCount == 0 {
-			pod.UpdateCount = 1
-			m.RunningPodMap[name] = pod
-			continue
-		}
-
-		SetCpuLimit(pod, math.Round(result[nmOfResources*podNm]))
-		// SetGpuLimit(pod, math.Round(result[nmOfResources*podNm+1]))
-		// pod.RIs["GPU"].SetLimit(math.Round(result[nmOfResources*podNm+1]))
-		// writeGpuGeminiConfig(m.RunningPodMap)
-		// SetRxLimit(&pod, math.Round(result[nmOfResources*podNm+2]))
-		// log.Println("[",pod.podName,"]", pod.CI.RIs["CPU"], pod.CI.RIs["GPU"], pod.CI.RIs["RX"])
-		pod.UpdateCount = pod.UpdateCount + 1
-
+	for podNm, name := range mI.podNmMap {
+		pod := m.RunningPodMap[name]
+		pod.SetLimit(result[nmOfResources*podNm], result[nmOfResources*podNm+1])
 		m.RunningPodMap[name] = pod
 	}
-
 }
