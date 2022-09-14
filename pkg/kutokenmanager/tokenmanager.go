@@ -2,7 +2,6 @@ package kutokenmanager
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"path"
@@ -216,7 +215,7 @@ func (ktm *KuTokenManager) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePl
 	s.Send(&pluginapi.ListAndWatchResponse{Devices: defaultDevices})
 
 	ktm.totalIDs = int(GetFileParamUint("/sys/kernel/gpu/configs", "/totalIDs"))
-	klog.Info("totalIDs : ", ktm.totalIDs)
+	klog.V(5).Info("totalIDs : ", ktm.totalIDs)
 
 	for {
 		select {
@@ -242,7 +241,7 @@ func (ktm *KuTokenManager) Allocate(ctx context.Context, reqs *pluginapi.Allocat
 	responses := pluginapi.AllocateResponse{}
 
 	for _, req := range reqs.ContainerRequests {
-		log.Printf("Allocate %d %s resource", len(req.DevicesIDs), ktm.tokenName)
+		klog.V(4).Infof("Allocate %d %s resource", len(req.DevicesIDs), ktm.tokenName)
 		responses.ContainerResponses = append(responses.ContainerResponses, &pluginapi.ContainerAllocateResponse{
 			Envs: map[string]string{
 				"LD_PRELOAD":        "/kubeshare/library/libgemhook.so.1",

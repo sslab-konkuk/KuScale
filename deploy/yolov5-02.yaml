@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: test3
+  name: yolov5-02
 spec:
   template:
     spec:
@@ -9,12 +9,12 @@ spec:
       restartPolicy: Never
       containers:
       # - image: docker.io/guswns531/jobs:yolov5-flask-004
-      - image: docker.io/guswns531/jobs:matrix-004
-      # - image: nvcr.io/nvidia/pytorch:21.03-py3
-        name: test3
+      - image: guswns531/jobs:yolov5-009
+        name: yolov5-02
         # command:  ["/bin/bash", "-c", "python", "restapi.py", "--port=5000"]
         # command:  ["sleep", "50000"]
-        command:  ["./time", "./matrix", "2048", "2000"]
+        command:  ["./time", "/opt/conda/bin/python3", "detect.py", "--weights", "yolov5l.pt", "--source", "2160p_30fps_30s.mp4", "--nosave"]
+        # command:  ["./matrix", "2048", "2000"]
         resources:
           limits:
             kuscale.com/token: 1
@@ -26,3 +26,6 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: "1G"
+
+
+# ./time python3 detect.py --weights yolov5l.pt --source 2160p_30fps_30s.mp4 --nosave

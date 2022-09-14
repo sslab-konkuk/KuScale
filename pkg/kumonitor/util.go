@@ -15,13 +15,14 @@
 package kumonitor
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
+	"golang.org/x/sys/unix"
 	"k8s.io/klog"
 )
 
@@ -56,7 +57,7 @@ func parseUint(s string, base, bitSize int) uint64 {
 func GetFileParamUint(Path, File string) uint64 {
 	contents, err := ioutil.ReadFile(filepath.Join(Path, File))
 	if err != nil {
-		klog.Infof("couldn't GetFileParamUint: %s", err)
+		klog.V(2).Infof("couldn't GetFileParamUint: %s", err)
 		return 0
 	}
 	return parseUint(strings.TrimSpace(string(contents)), 10, 64)
@@ -93,15 +94,28 @@ func CalAvg(array []uint64, windowSize int) float64 {
 	return float64(avg)
 }
 
+func GetMtime() (uint64, error) {
+	var ts unix.Timespec
+
+	err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &ts)
+	if err != nil {
+		return 0, fmt.Errorf("Unable get time: %s", err)
+	}
+
+	return uint64(unix.TimespecToNsec(ts)), nil
+}
+
 /* Get AcctUsage Functions */
 
-func GetCpuAcctUsage(cpuPath string) (uint64, int64) {
-	now := time.Now().UnixNano()
+func GetCpuAcctUsage(cpuPath string) (uint64, uint64) {
+	// now := time.Now().UnixNano()
+	now, _ := GetMtime()
 	return GetFileParamUint(cpuPath, "/cpuacct.usage"), now
 }
 
-func GetGpuAcctUsage(gpuPath string) (uint64, int64) {
-	now := time.Now().UnixNano()
+func GetGpuAcctUsage(gpuPath string) (uint64, uint64) {
+	// now := time.Now().UnixNano()
+	now, _ := GetMtime()
 	return GetFileParamUint(gpuPath, "/total_runtime"), now
 
 	// dat, _ := ioutil.ReadFile(gpuPath)
@@ -127,28 +141,28 @@ func GetGpuAcctUsage(gpuPath string) (uint64, int64) {
 
 // /* Set Limit Functions */
 
-func UpdateGpu() {
+func UpdateGemini() {
 	setFileUint(0, "/sys/kernel/gpu/gemini", "/resource_conf")
 }
 
-func SetCpuLimit(pi *PodInfo, nextCpu float64) {
-	if nextCpu > 1000 || nextCpu < 0 {
-		return
-	}
+// func SetCpuLimit(pi *PodInfo, nextCpu float64) {
+// 	if nextCpu > 1000 || nextCpu < 0 {
+// 		return
+// 	}
 
-	setFileUint(uint64(nextCpu)*1000, pi.RIs["CPU"].path, "/cpu.cfs_quota_us")
-	pi.RIs["CPU"].SetLimit(nextCpu)
-}
+// 	setFileUint(uint64(nextCpu)*1000, pi.RIs["CPU"].path, "/cpu.cfs_quota_us")
+// 	pi.RIs["CPU"].SetLimit(nextCpu)
+// }
 
-func SetGpuLimit(pi *PodInfo, nextGpu float64) {
-	if nextGpu > 1000 || nextGpu < 0 {
-		return
-	}
-	setFileUint(uint64(nextGpu)*10, pi.RIs["GPU"].path, "/gpu_limit")
-	setFileUint(uint64(nextGpu)*10, pi.RIs["GPU"].path, "/gpu_request")
-	UpdateGpu()
-	pi.RIs["GPU"].SetLimit(nextGpu)
-}
+// func SetGpuLimit(pi *PodInfo, nextGpu float64) {
+// 	if nextGpu > 1000 || nextGpu < 0 {
+// 		return
+// 	}
+// 	setFileUint(uint64(nextGpu)*10, pi.RIs["GPU"].path, "/gpu_limit")
+// 	setFileUint(uint64(nextGpu)*10, pi.RIs["GPU"].path, "/gpu_request")
+// 	UpdateGemini()
+// 	pi.RIs["GPU"].SetLimit(nextGpu)
+// }
 
 // func SetRxLimit(pi *PodInfo, nextRx float64) {
 // 	UpdateIngressQdisc(uint64(nextRx) * miliRX, 2 * uint64(nextRx) * miliRX, pi.interfaceName)
@@ -254,7 +268,7 @@ func SetGpuLimit(pi *PodInfo, nextGpu float64) {
 // 				// 	podName:       podName,
 // 				// 	namespace:     pod.GetNamespace(),
 // 				// 	containerName: container.GetName(),
-// 				// 	totalToken:    tokenSize,
+// 				// 	reservedToken:    tokenSize,
 // 				// 	initFlag:      false,
 // 				// 	cpuPath:       getCpuPath(podName),
 // 				// 	gpuPath:       getGpuPath(podName),

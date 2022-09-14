@@ -60,6 +60,8 @@ spec:
       - image: guswns531/kuscale:base-9
         name: kuscale
         # command: ["./bin/kuscale", "-v", "1", "--MonitoringPeriod", "2", "--MonitoringMode", "false"]
+        command:  ["sleep", "50000"]
+
         securityContext:
             privileged: true
             capabilities:

@@ -77,10 +77,6 @@ func Scan() (string, error) {
 		tokenSize := 0
 		podName := pod.GetName()
 
-		// if _, ok := CompletedPodMap[podName]; ok {
-		// 	continue
-		// }
-
 		for _, container := range pod.GetContainers() {
 			for _, device := range container.GetDevices() {
 				if device.GetResourceName() == tokenName {
@@ -98,7 +94,7 @@ func Scan() (string, error) {
 				// 	podName:       podName,
 				// 	namespace:     pod.GetNamespace(),
 				// 	containerName: container.GetName(),
-				// 	totalToken:    tokenSize,
+				// 	reservedToken:    tokenSize,
 				// 	initFlag:      false,
 				// 	cpuPath:       getCpuPath(podName),
 				// 	gpuPath:       getGpuPath(podName),
