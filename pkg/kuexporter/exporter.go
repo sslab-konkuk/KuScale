@@ -24,11 +24,13 @@ import (
 )
 
 type Exporter struct {
-	Limit       *prometheus.CounterVec
-	Usage       *prometheus.CounterVec
-	AvgUsage    *prometheus.CounterVec
-	AvgAvgUsage *prometheus.CounterVec
-	UpdateCount *prometheus.GaugeVec
+	Limit            *prometheus.CounterVec
+	Usage            *prometheus.CounterVec
+	AvgUsage         *prometheus.CounterVec
+	AvgAvgUsage      *prometheus.CounterVec
+	UpdatedCount     *prometheus.GaugeVec
+	tokenReservation *prometheus.GaugeVec
+	tokenQueue       *prometheus.GaugeVec
 }
 
 type ExporterCollector struct {
@@ -55,7 +57,9 @@ func (ec ExporterCollector) collect() error {
 			ec.exporter.AvgAvgUsage.WithLabelValues([]string{resourceName, id, node}...).Add(ri.AvgAvgUsage())
 		}
 
-		ec.exporter.UpdateCount.WithLabelValues([]string{name, id, node}...).Add(float64(pod.UpdateCount))
+		ec.exporter.UpdatedCount.WithLabelValues([]string{name, id, node}...).Add(float64(pod.UpdatedCount))
+		ec.exporter.tokenReservation.WithLabelValues([]string{name, id, node}...).Add(pod.tokenReservation)
+		ec.exporter.tokenQueue.WithLabelValues([]string{name, id, node}...).Add(pod.tokenQueue)
 	}
 	return nil
 }
@@ -65,7 +69,9 @@ func (ec ExporterCollector) Collect(ch chan<- prometheus.Metric) {
 	ec.exporter.Usage.Reset()
 	ec.exporter.AvgUsage.Reset()
 	ec.exporter.AvgAvgUsage.Reset()
-	ec.exporter.UpdateCount.Reset()
+	ec.exporter.UpdatedCount.Reset()
+	ec.exporter.tokenReservation.Reset()
+	ec.exporter.tokenQueue.Reset()
 
 	if err := ec.collect(); err != nil {
 		klog.Infof("Error reading container stats: %s", err)
@@ -75,7 +81,9 @@ func (ec ExporterCollector) Collect(ch chan<- prometheus.Metric) {
 	ec.exporter.Usage.Collect(ch)
 	ec.exporter.AvgUsage.Collect(ch)
 	ec.exporter.AvgAvgUsage.Collect(ch)
-	ec.exporter.UpdateCount.Collect(ch)
+	ec.exporter.UpdatedCount.Collect(ch)
+	ec.exporter.tokenReservation.Collect(ch)
+	ec.exporter.tokenQueue.Collect(ch)
 }
 
 func NewExporter(reg prometheus.Registerer, m *kumonitor.Monitor, nodeName string) *Exporter {
@@ -103,9 +111,21 @@ func NewExporter(reg prometheus.Registerer, m *kumonitor.Monitor, nodeName strin
 		},
 			[]string{"name", "id", "node"},
 		),
-		UpdateCount: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "UpdateCount",
-			Help: "UpdateCount",
+		UpdatedCount: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "UpdatedCount",
+			Help: "UpdatedCount",
+		},
+			[]string{"name", "id", "node"},
+		),
+		tokenReservation: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "tokenReservation",
+			Help: "tokenReservation",
+		},
+			[]string{"name", "id", "node"},
+		),
+		tokenQueue: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "tokenQueue",
+			Help: "tokenQueue",
 		},
 			[]string{"name", "id", "node"},
 		),

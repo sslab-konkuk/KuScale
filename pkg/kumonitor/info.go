@@ -15,7 +15,6 @@
 package kumonitor
 
 import (
-	"math"
 	"time"
 
 	"k8s.io/klog"
@@ -27,45 +26,41 @@ const miliGPU = 10
 // const miliRX = 80000 // miliNetworkBits = 10KB
 
 type ResourceName string
-type acctUsageAndTime struct {
+type AcctUsageAndTime struct {
 	timeStamp uint64
 	acctUsage uint64
 }
 
 type ResourceInfo struct {
-	name      ResourceName
-	path      string
-	initLimit float64
-
-	miliScale int
-	price     float64
-
-	test        []acctUsageAndTime
-	acctUsage   []uint64
-	limit       float64
-	usage       float64
-	avgUsage    float64
-	avgAvgUsage float64
+	name             ResourceName
+	path             string
+	miliScale        int
+	acctUsageAndTime []AcctUsageAndTime
+	price            float64
+	initLimit        float64
+	limit            float64
+	usage            float64
+	avgUsage         float64 // Weighted Average : (7*ri.avgUsage + ri.usage) / 8
+	dynamicWeight    float64 // Dynamic Weight for this resource 	: price / {avgUsage / sum of avgUsage}
+	avgAvgUsage      float64
 }
 
 func (ri *ResourceInfo) Init(name ResourceName, scale int, price float64) {
 
 	ri.name, ri.miliScale, ri.price = name, scale, price
-	ri.acctUsage = append(ri.acctUsage, 0)
 	ri.limit, ri.usage, ri.avgUsage, ri.avgUsage, ri.avgAvgUsage = 0, 0, 0, 0, 0
-	now, _ := GetMtime()
-	ri.test = append(ri.test, acctUsageAndTime{timeStamp: now, acctUsage: 0})
-	// ri.test = append(ri.test, acctUsageAndTime{timeStamp: 0, acctUsage: 0})
-
+	ri.acctUsageAndTime = append(ri.acctUsageAndTime, AcctUsageAndTime{timeStamp: uint64(time.Now().UnixNano()), acctUsage: 0})
 }
 
-func (ri *ResourceInfo) Limit() float64       { return ri.limit }
-func (ri *ResourceInfo) Usage() float64       { return math.Round(ri.usage) }
-func (ri *ResourceInfo) AvgUsage() float64    { return ri.avgUsage }
-func (ri *ResourceInfo) AvgAvgUsage() float64 { return ri.avgAvgUsage }
-func (ri *ResourceInfo) Price() float64       { return ri.price }
+func (ri *ResourceInfo) Limit() float64         { return ri.limit }
+func (ri *ResourceInfo) Usage() float64         { return ri.usage }
+func (ri *ResourceInfo) AvgUsage() float64      { return ri.avgUsage }
+func (ri *ResourceInfo) DynamicWeight() float64 { return ri.dynamicWeight }
+func (ri *ResourceInfo) AvgAvgUsage() float64   { return ri.avgAvgUsage }
+func (ri *ResourceInfo) Price() float64         { return ri.price }
+
 func (ri *ResourceInfo) SetLimit(limit float64) {
-	// klog.V(5).Info("Set ", ri.name, ": ", limit)
+	klog.V(5).Info("Set ", ri.name, ": ", limit)
 	switch ri.name {
 	case "CPU":
 		setFileUint(uint64(limit)*1000, ri.path, "/cpu.cfs_quota_us")
@@ -80,17 +75,16 @@ func (ri *ResourceInfo) SetLimit(limit float64) {
 	}
 }
 
-func (ri *ResourceInfo) GetAcctUsage() uint64 {
-
+func (ri *ResourceInfo) getAcctUsage() {
 	switch ri.name {
 	case "CPU":
 		acctUsage, timeStamp := GetCpuAcctUsage(ri.path)
-		ri.test = append(ri.test, acctUsageAndTime{timeStamp: timeStamp, acctUsage: acctUsage})
-		return acctUsage
+		ri.acctUsageAndTime = append(ri.acctUsageAndTime, AcctUsageAndTime{timeStamp: timeStamp, acctUsage: acctUsage})
+		return
 	case "GPU":
 		acctUsage, timeStamp := GetGpuAcctUsage(ri.path)
-		ri.test = append(ri.test, acctUsageAndTime{timeStamp: timeStamp, acctUsage: acctUsage})
-		return acctUsage
+		ri.acctUsageAndTime = append(ri.acctUsageAndTime, AcctUsageAndTime{timeStamp: timeStamp, acctUsage: acctUsage})
+		return
 		// case "RX":
 		// 	ifaceStats, err := scanInterfaceStats(ri.path) // TODO : NEED TO READ HOST NET DEV
 		// 	if err != nil {
@@ -99,14 +93,14 @@ func (ri *ResourceInfo) GetAcctUsage() uint64 {
 		// 	}
 		// 	return 8 * ifaceStats[0].RxBytes // Make Bits
 	}
-	return 0
+	return
 }
 
 func (ri *ResourceInfo) getCurrentUsage() float64 {
-	array := ri.test
+	ri.getAcctUsage()
+	array := ri.acctUsageAndTime
 	monitoringCount := len(array) - 1
-	prev := array[monitoringCount-1]
-	curr := array[monitoringCount]
+	curr, prev := array[monitoringCount], array[monitoringCount-1]
 
 	return float64(curr.acctUsage-prev.acctUsage) * 100. / float64(curr.timeStamp-prev.timeStamp)
 }
@@ -115,9 +109,9 @@ type PodStatus string
 
 const (
 	PodInitializing PodStatus = "initializing"
-	PodReady        PodStatus = "ready"
+	PodNotReady     PodStatus = "not ready"
 	PodRunning      PodStatus = "running"
-	PodFinished     PodStatus = "finished"
+	PodCompleted    PodStatus = "completed"
 )
 
 // Pod Info are managed by KuScale
@@ -129,7 +123,12 @@ type PodInfo struct {
 	reservedToken uint64
 	totalToken    float64
 	expectedToken float64
-	lastSetTime   int64
+
+	tokenQueue       float64
+	tokenReservation float64
+	availableToken   float64
+
+	UpdatedCount int64 // Update Count from KuScale
 
 	// pid           string
 	// interfaceName string
@@ -137,9 +136,6 @@ type PodInfo struct {
 	// Resource Names & Resource Infos
 	RNs []ResourceName
 	RIs map[ResourceName]*ResourceInfo
-
-	UpdateCount int // Update Count from KuScale
-
 }
 
 func NewPodInfo(podName string, RNs []ResourceName) *PodInfo {
@@ -160,7 +156,6 @@ func NewPodInfo(podName string, RNs []ResourceName) *PodInfo {
 		case "GPU":
 			ri.Init(name, miliGPU, 3)
 		}
-		// ri.UpdateUsage(1) //TODO: Need Change 1
 		podInfo.RIs[name] = &ri
 	}
 
@@ -171,11 +166,44 @@ func NewPodInfo(podName string, RNs []ResourceName) *PodInfo {
 func (pi *PodInfo) UpdateUsage() {
 
 	for _, ri := range pi.RIs {
-		ri.acctUsage = append(ri.acctUsage, ri.GetAcctUsage())
 		ri.usage = ri.getCurrentUsage()
 		ri.avgUsage = (7*ri.avgUsage + ri.usage) / 8
 		ri.avgAvgUsage = (7*ri.avgAvgUsage + ri.avgUsage) / 8
 	}
+}
+
+// Caclulate Token Queue for pod
+func (pi *PodInfo) UpdateTokenQueue(elaspedTimePerSecond float64) {
+
+	tokenQueue := pi.tokenQueue + float64(pi.tokenReservation)*elaspedTimePerSecond
+	for _, ri := range pi.RIs {
+		limit, price := ri.Limit(), ri.Price()
+		tokenQueue = tokenQueue - price*limit*elaspedTimePerSecond
+	}
+	if tokenQueue < 0 {
+		tokenQueue = 0
+	}
+	pi.tokenQueue = tokenQueue
+
+	klog.V(10).Info("Update tokenQueue for Pod: ", pi.PodName, " Total Token : ", pi.tokenQueue, " Token Reservation : ", pi.tokenReservation)
+}
+
+// Caclulate Dynamic Weight for each resource in the pod
+func (pi *PodInfo) UpdateDynamicWeight() {
+
+	// Get Sum of AvgUsage
+	sumAvgUsage := 0.
+	for _, ri := range pi.RIs {
+		sumAvgUsage += ri.AvgUsage() + 1
+	}
+
+	// Update Dynamic Weight
+	for rn, ri := range pi.RIs {
+		avgUsage, price := ri.AvgUsage()+1, ri.Price()
+		ri.dynamicWeight = price * sumAvgUsage / avgUsage
+		klog.V(10).Info("Update DynamicWeight for Pod: ", pi.PodName, ", ", rn, "'s Dynamic Weight : ", ri.dynamicWeight)
+	}
+
 }
 
 func (pi *PodInfo) SetInitLimit() {
@@ -191,6 +219,6 @@ func (pi *PodInfo) SetLimit(cpuLimit, gpuLimit float64) {
 	}
 	pi.RIs["CPU"].SetLimit(cpuLimit)
 	pi.RIs["GPU"].SetLimit(gpuLimit)
-	pi.UpdateCount = pi.UpdateCount + 1
-	pi.lastSetTime = time.Now().UnixNano()
+	pi.UpdatedCount = pi.UpdatedCount + 1
+	// pi.lastUpdatedTime = time.Now().UnixNano()
 }
