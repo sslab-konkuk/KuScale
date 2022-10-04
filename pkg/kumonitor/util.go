@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/unix"
 	"k8s.io/klog"
@@ -105,23 +106,17 @@ func GetMtime() (uint64, error) {
 	return uint64(unix.TimespecToNsec(ts)), nil
 }
 
-/* Get AcctUsage Functions */
-
+/* Get AcctUsage Functions From Cgroup or GPU Virt */
 func GetCpuAcctUsage(cpuPath string) (uint64, uint64) {
-	// now := time.Now().UnixNano()
-	now, _ := GetMtime()
+	now := uint64(time.Now().UnixNano())
+	// now, _ := GetMtime()
 	return GetFileParamUint(cpuPath, "/cpuacct.usage"), now
 }
 
 func GetGpuAcctUsage(gpuPath string) (uint64, uint64) {
-	// now := time.Now().UnixNano()
-	now, _ := GetMtime()
+	now := uint64(time.Now().UnixNano())
+	// now, _ := GetMtime()
 	return GetFileParamUint(gpuPath, "/total_runtime"), now
-
-	// dat, _ := ioutil.ReadFile(gpuPath)
-	// read_line := strings.TrimSuffix(string(dat), "\n")
-	// num1, _ := strconv.ParseFloat(read_line, 64)
-	// return uint64(num1), now
 }
 
 // func GetRxAcctUsage(pi *PodInfo) (uint64) {

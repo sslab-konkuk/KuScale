@@ -24,8 +24,8 @@ import (
 )
 
 type Configuraion struct {
-	monitoringPeriod int
-	windowSize       int
+	monitoringPeriod int64
+	windowSize       int64
 	nodeName         string
 	monitoringMode   bool
 }
@@ -34,17 +34,22 @@ type PodInfoMap map[string]*PodInfo
 type PodIDtoNameMap map[string]string
 
 type Monitor struct {
-	ctx             context.Context
-	cli             *client.Client
-	config          Configuraion
+	ctx      context.Context
+	cli      *client.Client
+	config   Configuraion
+	stopFlag bool
+
+	NotReadyPodMap  PodInfoMap
 	RunningPodMap   PodInfoMap
-	completedPodMap PodInfoMap
+	CompletedPodMap PodInfoMap
 	podIDtoNameMap  PodIDtoNameMap
-	stopFlag        bool
+
+	lastExpiredTime int64 // Last Expired Time form Monitor Timer
+	lastUpdatedTime int64 // Last Updated Time from KuScale
 }
 
 func NewMonitor(
-	monitoringPeriod, windowSize int,
+	monitoringPeriod, windowSize int64,
 	nodeName string,
 	monitoringMode bool,
 	stopCh <-chan struct{}) *Monitor {
@@ -52,7 +57,12 @@ func NewMonitor(
 	klog.V(4).Info("Creating New Monitor")
 	config := Configuraion{monitoringPeriod, windowSize, nodeName, monitoringMode}
 	klog.V(4).Info("Configuration ", config)
-	monitor := &Monitor{config: config, RunningPodMap: make(PodInfoMap), completedPodMap: make(PodInfoMap), podIDtoNameMap: make(PodIDtoNameMap), stopFlag: false}
+	monitor := &Monitor{config: config,
+		NotReadyPodMap:  make(PodInfoMap),
+		RunningPodMap:   make(PodInfoMap),
+		CompletedPodMap: make(PodInfoMap),
+		podIDtoNameMap:  make(PodIDtoNameMap),
+		stopFlag:        false}
 
 	return monitor
 }
@@ -62,7 +72,7 @@ func (m *Monitor) PrintPodList() {
 		klog.V(5).Info("Live Pod Name: ", name)
 	}
 
-	for name := range m.completedPodMap {
+	for name := range m.CompletedPodMap {
 		klog.V(5).Info("Completed Pod Name: ", name)
 	}
 }
@@ -78,64 +88,77 @@ func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 	podInfo.RIs["CPU"].initLimit = cpuLimit
 	podInfo.RIs["GPU"].initLimit = gpuLimit
 	podInfo.reservedToken = uint64(cpuLimit + 3*gpuLimit)
-	podInfo.podStatus = PodReady
+	podInfo.tokenReservation = cpuLimit + 3*gpuLimit
+	podInfo.podStatus = PodNotReady
 
 	podInfo.RIs["CPU"].path, podInfo.RIs["GPU"].path, _ = m.getPath(podName)
 
 	if CheckPodPath(podInfo) {
+		klog.V(5).Info("Ready and Start", podName)
 		podInfo.SetInitLimit()
 		podInfo.UpdateUsage()
+		podInfo.podStatus = PodRunning
+		m.RunningPodMap[podName] = podInfo
 	}
-	m.RunningPodMap[podName] = podInfo
+	m.NotReadyPodMap[podName] = podInfo
 }
 
 func (m *Monitor) Monitoring() {
 	klog.V(5).Info("Monitoring Start")
 
 	for !m.stopFlag {
-		timer1 := time.NewTimer(time.Second * time.Duration(m.config.monitoringPeriod))
+		m.lastExpiredTime = time.Now().UnixNano()
+		m.lastUpdatedTime = m.lastExpiredTime
+		monitorTimer := time.NewTimer(time.Second * time.Duration(m.config.monitoringPeriod))
+
 		podName, _ := kuwatcher.Scan()
 		if podName != "" {
-			m.UpdateNewPod(podName, 600, 100)
+			m.UpdateNewPod(podName, 200, 10)
 		}
 
-		if len(m.RunningPodMap) != 0 {
-			m.MonitorPod()
-			if !m.config.monitoringMode {
-				m.Autoscale()
-			}
-		}
+		m.MontiorAllPods()
+		m.CheckNotReadyPods()
 
-		<-timer1.C
+		// if !m.config.monitoringMode {
+		m.Autoscale()
+		// }
+
+		<-monitorTimer.C
 	}
 }
 
-func (m *Monitor) MonitorPod() {
+func (m *Monitor) CheckNotReadyPods() {
 
-	for name, pi := range m.RunningPodMap {
+	for name, pi := range m.NotReadyPodMap {
 
-		if pi.podStatus == PodReady && !CheckPodPath(pi) {
+		pi.RIs["CPU"].path, pi.RIs["GPU"].path, _ = m.getPath(name)
 
-			klog.V(5).Info("Ready but no Path ", name)
-			pi.RIs["CPU"].path, pi.RIs["GPU"].path, _ = m.getPath(name)
+		if CheckPodPath(pi) {
+			klog.V(5).Info("Ready and Start", name)
+			pi.SetInitLimit()
+			pi.UpdateUsage()
+			pi.podStatus = PodRunning
+			delete(m.NotReadyPodMap, name)
 			m.RunningPodMap[name] = pi
 			continue
-		} else if pi.podStatus == PodReady && CheckPodPath(pi) {
-			klog.V(5).Info("Ready and Start", name)
-			pi.UpdateUsage()
-			pi.SetInitLimit()
-			pi.podStatus = PodRunning
-		} else if pi.podStatus == PodRunning && !CheckPodPath(pi) {
+		}
+		klog.V(5).Info("Not Ready because no Path ", name)
+	}
+}
+
+func (m *Monitor) MontiorAllPods() {
+
+	for name, pi := range m.RunningPodMap {
+		if !CheckPodPath(pi) {
 			klog.V(5).Info("Completed ", name)
-			pi.podStatus = PodFinished
-			m.completedPodMap[name] = pi
+			pi.podStatus = PodCompleted
 			delete(m.RunningPodMap, name)
+			m.CompletedPodMap[name] = pi
 			continue
 		}
-
 		pi.UpdateUsage()
-		klog.V(10).Info("Usage ", pi.PodName, " ", pi.RIs["CPU"].Usage(), pi.RIs["GPU"].Usage())
 		m.RunningPodMap[name] = pi
+		klog.V(10).Info("Usage ", pi.PodName, " ", pi.RIs["CPU"].Usage(), pi.RIs["GPU"].Usage())
 	}
 }
 
@@ -147,12 +170,15 @@ func (m *Monitor) Run(stopCh <-chan struct{}) {
 	klog.V(4).Info("Started Monitor")
 	<-stopCh
 	m.stopFlag = true
+	klog.V(4).Info("Shutting monitor down")
+}
 
-	for _, pi := range m.completedPodMap {
-		var prev acctUsageAndTime
+func (m *Monitor) printAcct() {
+	for _, pi := range m.CompletedPodMap {
+		var prev AcctUsageAndTime
 
 		ri := pi.RIs["CPU"]
-		for _, timeacct := range ri.test {
+		for _, timeacct := range ri.acctUsageAndTime {
 			curr := timeacct
 			cpupercent := float64(curr.acctUsage-prev.acctUsage) * 100. / float64(curr.timeStamp-prev.timeStamp)
 			/* Time, CPU, GPU, cuLaunchKernel, cuCtxSynchronize, cuMemAlloc_v2, cuMemFree_v2*/
@@ -160,7 +186,7 @@ func (m *Monitor) Run(stopCh <-chan struct{}) {
 			prev = timeacct
 		}
 		ri = pi.RIs["GPU"]
-		for _, timeacct := range ri.test {
+		for _, timeacct := range ri.acctUsageAndTime {
 			curr := timeacct
 			gpupercent := float64(curr.acctUsage-prev.acctUsage) * 100. / float64(curr.timeStamp-prev.timeStamp)
 			fmt.Print(timeacct.timeStamp, ",0,", gpupercent, ",0,0\n")
@@ -168,6 +194,4 @@ func (m *Monitor) Run(stopCh <-chan struct{}) {
 		}
 
 	}
-
-	klog.V(4).Info("Shutting monitor down")
 }

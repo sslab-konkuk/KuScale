@@ -37,24 +37,26 @@ import (
 var (
 	masterURL        string
 	kubeconfig       string
-	threadNum        int
-	monitoringPeriod int
-	windowSize       int
+	threadNum        int64
+	monitoringPeriod int64
+	windowSize       int64
 	nodeName         string
 	monitoringMode   bool
 	exporterMode     bool
+	bpfwatcherMode   bool
 )
 
 func init() {
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
-	flag.IntVar(&threadNum, "threadness", 1, "The number of worker threads.")
+	flag.Int64Var(&threadNum, "threadness", 1, "The number of worker threads.")
 
-	flag.IntVar(&monitoringPeriod, "MonitoringPeriod", 2, "MonitoringPeriod")
-	flag.IntVar(&windowSize, "WindowSize", 15, "WindowSize")
+	flag.Int64Var(&monitoringPeriod, "MonitoringPeriod", 2, "MonitoringPeriod")
+	flag.Int64Var(&windowSize, "WindowSize", 15, "WindowSize")
 	flag.StringVar(&nodeName, "NodeName", "node4", "NodeName")
 	flag.BoolVar(&monitoringMode, "MonitoringMode", true, "MonitoringMode")
 	flag.BoolVar(&exporterMode, "exporterMode", true, "exporterMode")
+	flag.BoolVar(&bpfwatcherMode, "bpfwatcherMode", false, "bpfwatcherMode")
 }
 
 func main() {
@@ -72,8 +74,10 @@ func main() {
 	}
 
 	// Run Ku BPF Watcher
-	bpfWatcher := bpfwatcher.NewbpfWatcher()
-	go bpfWatcher.Run(monitor, stopCh)
+	if bpfwatcherMode {
+		bpfWatcher := bpfwatcher.NewbpfWatcher()
+		go bpfWatcher.Run(monitor, stopCh)
+	}
 
 	// Run KU Device Plugin
 	tokenManager := kutokenmanager.NewKuTokenManager(

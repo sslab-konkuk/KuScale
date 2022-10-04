@@ -152,7 +152,7 @@ func (bw *BpfWatcher) Run(m *kumonitor.Monitor, stopCh <-chan struct{}) {
 				first = event
 				count = 1
 				if event.Type == 12 {
-					m.MonitorPod()
+					m.MontiorAllPods()
 				}
 			}
 
