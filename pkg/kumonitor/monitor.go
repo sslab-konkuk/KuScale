@@ -15,7 +15,6 @@ package kumonitor
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/docker/docker/client"
@@ -34,11 +33,10 @@ type PodInfoMap map[string]*PodInfo
 type PodIDtoNameMap map[string]string
 
 type Monitor struct {
-	ctx      context.Context
-	cli      *client.Client
-	config   Configuraion
-	staticV  float64
-	stopFlag bool
+	ctx     context.Context
+	cli     *client.Client
+	config  Configuraion
+	staticV float64
 
 	NotReadyPodMap  PodInfoMap
 	RunningPodMap   PodInfoMap
@@ -64,110 +62,115 @@ func NewMonitor(
 		RunningPodMap:   make(PodInfoMap),
 		CompletedPodMap: make(PodInfoMap),
 		podIDtoNameMap:  make(PodIDtoNameMap),
-		staticV:         staticV,
-		stopFlag:        false}
+		staticV:         staticV}
 
 	return monitor
 }
 
-func (m *Monitor) PrintPodList() {
-	for name := range m.RunningPodMap {
-		klog.V(5).Info("Live Pod Name: ", name)
-	}
-
-	for name := range m.CompletedPodMap {
-		klog.V(5).Info("Completed Pod Name: ", name)
-	}
-}
-
+/*
+Func Name : UpdateNewPod()
+Objective : 1) Initalize New Pod
+			2) Pulling and Wait for New Pod
+*/
 func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 
+	if podName == "" {
+		return
+	}
+	// Check This Pod is Not in RunningPodMap
 	if _, ok := m.RunningPodMap[podName]; ok {
 		klog.V(4).Info("No Need to Update Live Pod ", podName)
 		return
 	}
 
+	// Prepare The Pod Info Structure
 	podInfo := NewPodInfo(podName, []ResourceName{"CPU", "GPU"})
 	podInfo.RIs["CPU"].initLimit = cpuLimit
 	podInfo.RIs["GPU"].initLimit = gpuLimit
-	// TODO: Need To change
 	podInfo.TokenReservation = 2*cpuLimit + 6*gpuLimit
-	podInfo.TokenQueue = 0
-	// podInfo.TokenQueue = podInfo.TokenReservation / 2
-	podInfo.podStatus = PodNotReady
+	podInfo.TokenQueue = 0 // podInfo.TokenReservation / 2
 
-	podInfo.RIs["CPU"].path, podInfo.RIs["GPU"].path, _ = m.getPath(podName)
-
-	if CheckPodPath(podInfo) {
-		klog.V(5).Info("Ready and Start", podName)
-		podInfo.SetInitLimit()
-		podInfo.InitUpdateUsage()
-		podInfo.podStatus = PodRunning
-		m.RunningPodMap[podName] = podInfo
-		return
-	}
-	m.NotReadyPodMap[podName] = podInfo
-}
-
-func (m *Monitor) Monitoring() {
-	klog.V(5).Info("Monitoring Start")
-
-	for !m.stopFlag {
-		m.lastExpiredTime = time.Now().UnixNano()
-
-		monitorTimer := time.NewTimer(time.Second * time.Duration(m.config.monitoringPeriod))
-
-		podName, _ := kuwatcher.Scan()
-		if podName != "" {
-			// m.UpdateNewPod(podName, 50, 10)
-			m.UpdateNewPod(podName, 300, 10)
+	// Wait for The New Pod to Prepare the Cgroup
+	for {
+		podInfo.RIs["CPU"].path, podInfo.RIs["GPU"].path, _ = m.getPath(podName)
+		if CheckPodPath(podInfo) {
+			klog.V(5).Info("Ready and Start", podName)
+			podInfo.SetInitLimit()
+			podInfo.InitUpdateUsage()
+			m.RunningPodMap[podName] = podInfo
+			return
 		}
-
-		m.MontiorAllPods()
-		m.CheckNotReadyPods()
-
-		// if !m.config.monitoringMode {
-		m.Autoscale()
-		// }
-
-		m.lastUpdatedTime = m.lastExpiredTime
-		<-monitorTimer.C
+		klog.V(10).Info("Not Ready because no Path ", podName)
 	}
 }
 
-func (m *Monitor) CheckNotReadyPods() {
+/*
+Func Name : PullNewPods()
+Objective : 1) Pull New Pods From KuWatcher connected with kubelet
+			2) Update New Pods
+*/
+func (m *Monitor) PullNewPods() {
+	podNameList, _ := kuwatcher.Scan()
 
-	for name, pi := range m.NotReadyPodMap {
-
-		pi.RIs["CPU"].path, pi.RIs["GPU"].path, _ = m.getPath(name)
-
-		if CheckPodPath(pi) {
-			klog.V(5).Info("Ready and Start", name)
-			pi.SetInitLimit()
-			pi.InitUpdateUsage()
-			pi.podStatus = PodRunning
-			delete(m.NotReadyPodMap, name)
-			pi.InitUpdateUsage()
-			m.RunningPodMap[name] = pi
-			continue
-		}
-		klog.V(5).Info("Not Ready because no Path ", name)
+	for _, name := range podNameList {
+		go m.UpdateNewPod(name, 300, 10)
 	}
 }
 
+/*
+Func Name : MontiorAllPods()
+Objective : 1) Monitoring the pods in RunningPodMap
+			2) Check and Remove Completed Pods
+*/
 func (m *Monitor) MontiorAllPods() {
 
-	for name, pi := range m.RunningPodMap {
-		if !CheckPodPath(pi) {
-			klog.V(5).Info("Completed ", name)
-			pi.podStatus = PodCompleted
-			delete(m.RunningPodMap, name)
-			m.CompletedPodMap[name] = pi
-			continue
+	rpmLen := len(m.RunningPodMap)
+	monitorCh := make(chan *PodInfo, rpmLen)
+
+	for _, pi := range m.RunningPodMap {
+		go func(pi *PodInfo, mch chan *PodInfo) {
+
+			if !CheckPodPath(pi) {
+				klog.V(10).Info("Completed ", pi.PodName)
+				pi.status = PodCompleted
+			} else {
+				pi.UpdateUsage()
+				if pi.status == PodInitializing {
+					pi.status = PodRunning
+				}
+				klog.V(10).Info("Usage ", pi.PodName, " ", pi.RIs["CPU"].Usage(), pi.RIs["GPU"].Usage())
+			}
+			mch <- pi
+		}(pi, monitorCh)
+	}
+
+	for i := 0; i < rpmLen; i++ {
+		pi := <-monitorCh
+		if pi.status == PodCompleted {
+			delete(m.RunningPodMap, pi.PodName)
+			m.CompletedPodMap[pi.PodName] = pi
+		} else {
+			m.RunningPodMap[pi.PodName] = pi
 		}
-		pi.UpdateUsage()
-		m.RunningPodMap[name] = pi
-		klog.V(10).Info("Usage ", pi.PodName, " ", pi.RIs["CPU"].Usage(), pi.RIs["GPU"].Usage())
+	}
+}
+
+func (m *Monitor) Monitoring(stopCh <-chan struct{}) {
+	klog.V(5).Info("Monitoring Start")
+	timerCh := time.Tick(time.Second * time.Duration(m.config.monitoringPeriod))
+	for {
+		select {
+		case <-stopCh:
+			return
+
+		case timeTick := <-timerCh:
+			m.lastExpiredTime = timeTick.UnixNano()
+
+			m.PullNewPods()
+			m.MontiorAllPods()
+			m.Autoscale()
+			m.lastUpdatedTime = m.lastExpiredTime
+		}
 	}
 }
 
@@ -175,32 +178,8 @@ func (m *Monitor) Run(stopCh <-chan struct{}) {
 	m.ConnectDocker()
 
 	klog.V(4).Info("Starting Monitor")
-	go m.Monitoring()
+	go m.Monitoring(stopCh)
 	klog.V(4).Info("Started Monitor")
 	<-stopCh
-	m.stopFlag = true
 	klog.V(4).Info("Shutting monitor down")
-}
-
-func (m *Monitor) printAcct() {
-	for _, pi := range m.CompletedPodMap {
-		var prev AcctUsageAndTime
-
-		ri := pi.RIs["CPU"]
-		for _, timeacct := range ri.acctUsageAndTime {
-			curr := timeacct
-			cpupercent := float64(curr.acctUsage-prev.acctUsage) * 100. / float64(curr.timeStamp-prev.timeStamp)
-			/* Time, CPU, GPU, cuLaunchKernel, cuCtxSynchronize, cuMemAlloc_v2, cuMemFree_v2*/
-			fmt.Print(timeacct.timeStamp, ",", cpupercent, ",0,0,0\n")
-			prev = timeacct
-		}
-		ri = pi.RIs["GPU"]
-		for _, timeacct := range ri.acctUsageAndTime {
-			curr := timeacct
-			gpupercent := float64(curr.acctUsage-prev.acctUsage) * 100. / float64(curr.timeStamp-prev.timeStamp)
-			fmt.Print(timeacct.timeStamp, ",0,", gpupercent, ",0,0\n")
-			prev = timeacct
-		}
-
-	}
 }
