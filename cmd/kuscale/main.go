@@ -35,28 +35,35 @@ import (
 )
 
 var (
-	masterURL        string
-	kubeconfig       string
+	masterURL  string
+	kubeconfig string
+	nodeName   string
+
 	threadNum        int64
 	monitoringPeriod int64
 	windowSize       int64
-	nodeName         string
-	monitoringMode   bool
-	exporterMode     bool
-	bpfwatcherMode   bool
+
+	monitoringMode bool
+	exporterMode   bool
+	bpfwatcherMode bool
+
+	staticV float64
 )
 
 func init() {
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
-	flag.Int64Var(&threadNum, "threadness", 1, "The number of worker threads.")
+	flag.StringVar(&nodeName, "NodeName", "node4", "NodeName")
 
+	flag.Int64Var(&threadNum, "threadness", 1, "The number of worker threads.")
 	flag.Int64Var(&monitoringPeriod, "MonitoringPeriod", 2, "MonitoringPeriod")
 	flag.Int64Var(&windowSize, "WindowSize", 15, "WindowSize")
-	flag.StringVar(&nodeName, "NodeName", "node4", "NodeName")
+
 	flag.BoolVar(&monitoringMode, "MonitoringMode", true, "MonitoringMode")
 	flag.BoolVar(&exporterMode, "exporterMode", true, "exporterMode")
 	flag.BoolVar(&bpfwatcherMode, "bpfwatcherMode", false, "bpfwatcherMode")
+
+	flag.Float64Var(&staticV, "staticV", 0, "Static V Weight") //TODO: Need to Remove the static V
 }
 
 func main() {
@@ -65,7 +72,7 @@ func main() {
 	stopCh := signals.SetupSignalHandler()
 
 	// Run Ku Monitor
-	monitor := kumonitor.NewMonitor(monitoringPeriod, windowSize, nodeName, monitoringMode, stopCh)
+	monitor := kumonitor.NewMonitor(monitoringPeriod, windowSize, nodeName, monitoringMode, staticV, stopCh)
 	go monitor.Run(stopCh)
 
 	// Run Promethuse Exporter
