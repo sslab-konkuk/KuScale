@@ -37,6 +37,7 @@ type Monitor struct {
 	ctx      context.Context
 	cli      *client.Client
 	config   Configuraion
+	staticV  float64
 	stopFlag bool
 
 	NotReadyPodMap  PodInfoMap
@@ -52,6 +53,7 @@ func NewMonitor(
 	monitoringPeriod, windowSize int64,
 	nodeName string,
 	monitoringMode bool,
+	staticV float64,
 	stopCh <-chan struct{}) *Monitor {
 
 	klog.V(4).Info("Creating New Monitor")
@@ -62,6 +64,7 @@ func NewMonitor(
 		RunningPodMap:   make(PodInfoMap),
 		CompletedPodMap: make(PodInfoMap),
 		podIDtoNameMap:  make(PodIDtoNameMap),
+		staticV:         staticV,
 		stopFlag:        false}
 
 	return monitor
@@ -87,8 +90,10 @@ func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 	podInfo := NewPodInfo(podName, []ResourceName{"CPU", "GPU"})
 	podInfo.RIs["CPU"].initLimit = cpuLimit
 	podInfo.RIs["GPU"].initLimit = gpuLimit
-	podInfo.reservedToken = uint64(cpuLimit + 3*gpuLimit)
-	podInfo.tokenReservation = cpuLimit + 3*gpuLimit
+	// TODO: Need To change
+	podInfo.TokenReservation = 2*cpuLimit + 6*gpuLimit
+	podInfo.TokenQueue = 0
+	// podInfo.TokenQueue = podInfo.TokenReservation / 2
 	podInfo.podStatus = PodNotReady
 
 	podInfo.RIs["CPU"].path, podInfo.RIs["GPU"].path, _ = m.getPath(podName)
@@ -96,9 +101,10 @@ func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 	if CheckPodPath(podInfo) {
 		klog.V(5).Info("Ready and Start", podName)
 		podInfo.SetInitLimit()
-		podInfo.UpdateUsage()
+		podInfo.InitUpdateUsage()
 		podInfo.podStatus = PodRunning
 		m.RunningPodMap[podName] = podInfo
+		return
 	}
 	m.NotReadyPodMap[podName] = podInfo
 }
@@ -108,12 +114,13 @@ func (m *Monitor) Monitoring() {
 
 	for !m.stopFlag {
 		m.lastExpiredTime = time.Now().UnixNano()
-		m.lastUpdatedTime = m.lastExpiredTime
+
 		monitorTimer := time.NewTimer(time.Second * time.Duration(m.config.monitoringPeriod))
 
 		podName, _ := kuwatcher.Scan()
 		if podName != "" {
-			m.UpdateNewPod(podName, 200, 10)
+			// m.UpdateNewPod(podName, 50, 10)
+			m.UpdateNewPod(podName, 300, 10)
 		}
 
 		m.MontiorAllPods()
@@ -123,6 +130,7 @@ func (m *Monitor) Monitoring() {
 		m.Autoscale()
 		// }
 
+		m.lastUpdatedTime = m.lastExpiredTime
 		<-monitorTimer.C
 	}
 }
@@ -136,9 +144,10 @@ func (m *Monitor) CheckNotReadyPods() {
 		if CheckPodPath(pi) {
 			klog.V(5).Info("Ready and Start", name)
 			pi.SetInitLimit()
-			pi.UpdateUsage()
+			pi.InitUpdateUsage()
 			pi.podStatus = PodRunning
 			delete(m.NotReadyPodMap, name)
+			pi.InitUpdateUsage()
 			m.RunningPodMap[name] = pi
 			continue
 		}
