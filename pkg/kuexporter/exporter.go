@@ -27,10 +27,10 @@ type Exporter struct {
 	Limit            *prometheus.CounterVec
 	Usage            *prometheus.CounterVec
 	AvgUsage         *prometheus.CounterVec
-	AvgAvgUsage      *prometheus.CounterVec
+	DynamicWeight    *prometheus.CounterVec
 	UpdatedCount     *prometheus.GaugeVec
-	tokenReservation *prometheus.GaugeVec
-	tokenQueue       *prometheus.GaugeVec
+	TokenReservation *prometheus.GaugeVec
+	TokenQueue       *prometheus.GaugeVec
 }
 
 type ExporterCollector struct {
@@ -54,12 +54,12 @@ func (ec ExporterCollector) collect() error {
 			ec.exporter.Limit.WithLabelValues([]string{resourceName, id, node}...).Add(ri.Limit())
 			ec.exporter.Usage.WithLabelValues([]string{resourceName, id, node}...).Add(ri.Usage())
 			ec.exporter.AvgUsage.WithLabelValues([]string{resourceName, id, node}...).Add(ri.AvgUsage())
-			ec.exporter.AvgAvgUsage.WithLabelValues([]string{resourceName, id, node}...).Add(ri.AvgAvgUsage())
+			ec.exporter.DynamicWeight.WithLabelValues([]string{resourceName, id, node}...).Add(ri.DynamicWeight())
 		}
 
 		ec.exporter.UpdatedCount.WithLabelValues([]string{name, id, node}...).Add(float64(pod.UpdatedCount))
-		ec.exporter.tokenReservation.WithLabelValues([]string{name, id, node}...).Add(pod.tokenReservation)
-		ec.exporter.tokenQueue.WithLabelValues([]string{name, id, node}...).Add(pod.tokenQueue)
+		ec.exporter.TokenReservation.WithLabelValues([]string{name, id, node}...).Add(pod.TokenReservation)
+		ec.exporter.TokenQueue.WithLabelValues([]string{name, id, node}...).Add(pod.TokenQueue)
 	}
 	return nil
 }
@@ -68,10 +68,10 @@ func (ec ExporterCollector) Collect(ch chan<- prometheus.Metric) {
 	ec.exporter.Limit.Reset()
 	ec.exporter.Usage.Reset()
 	ec.exporter.AvgUsage.Reset()
-	ec.exporter.AvgAvgUsage.Reset()
+	ec.exporter.DynamicWeight.Reset()
 	ec.exporter.UpdatedCount.Reset()
-	ec.exporter.tokenReservation.Reset()
-	ec.exporter.tokenQueue.Reset()
+	ec.exporter.TokenReservation.Reset()
+	ec.exporter.TokenQueue.Reset()
 
 	if err := ec.collect(); err != nil {
 		klog.Infof("Error reading container stats: %s", err)
@@ -80,10 +80,10 @@ func (ec ExporterCollector) Collect(ch chan<- prometheus.Metric) {
 	ec.exporter.Limit.Collect(ch)
 	ec.exporter.Usage.Collect(ch)
 	ec.exporter.AvgUsage.Collect(ch)
-	ec.exporter.AvgAvgUsage.Collect(ch)
+	ec.exporter.DynamicWeight.Collect(ch)
 	ec.exporter.UpdatedCount.Collect(ch)
-	ec.exporter.tokenReservation.Collect(ch)
-	ec.exporter.tokenQueue.Collect(ch)
+	ec.exporter.TokenReservation.Collect(ch)
+	ec.exporter.TokenQueue.Collect(ch)
 }
 
 func NewExporter(reg prometheus.Registerer, m *kumonitor.Monitor, nodeName string) *Exporter {
@@ -105,9 +105,9 @@ func NewExporter(reg prometheus.Registerer, m *kumonitor.Monitor, nodeName strin
 		},
 			[]string{"name", "id", "node"},
 		),
-		AvgAvgUsage: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "AvgAvgUsage",
-			Help: "Resource AvgAvgUsage",
+		DynamicWeight: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "DynamicWeight",
+			Help: "Resource DynamicWeight",
 		},
 			[]string{"name", "id", "node"},
 		),
@@ -117,15 +117,15 @@ func NewExporter(reg prometheus.Registerer, m *kumonitor.Monitor, nodeName strin
 		},
 			[]string{"name", "id", "node"},
 		),
-		tokenReservation: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "tokenReservation",
-			Help: "tokenReservation",
+		TokenReservation: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "TokenReservation",
+			Help: "TokenReservation",
 		},
 			[]string{"name", "id", "node"},
 		),
-		tokenQueue: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "tokenQueue",
-			Help: "tokenQueue",
+		TokenQueue: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "TokenQueue",
+			Help: "TokenQueue",
 		},
 			[]string{"name", "id", "node"},
 		),

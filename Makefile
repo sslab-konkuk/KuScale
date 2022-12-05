@@ -55,7 +55,7 @@ build-base:
 gemini:
 	kubectl apply -f ./deploy/gemini-deploy
 
-gemini-down:
+geminid:
 	kubectl delete -f ./deploy/gemini-deploy
 
 kubeshare:
@@ -65,7 +65,7 @@ kubeshare-down:
 	kubectl delete -f ./deploy/kubeshare-deploy
 
 watch-pod:
-	watch -n 1 kubectl get pods --all-namespaces
+	watch -n 1 kubectl get pods #--all-namespaces
 	
 clean:
 	rm -rf $(BIN_DIR)
@@ -82,3 +82,10 @@ test3:
 
 test3d:
 	kubectl delete -f ./deploy/test3.yaml
+
+
+yolov5:
+	kubectl apply -f ./deploy/yolov5-01.yaml
+
+yolov5d:
+	kubectl delete -f ./deploy/yolov5-01.yaml

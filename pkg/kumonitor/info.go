@@ -60,7 +60,7 @@ func (ri *ResourceInfo) AvgAvgUsage() float64   { return ri.avgAvgUsage }
 func (ri *ResourceInfo) Price() float64         { return ri.price }
 
 func (ri *ResourceInfo) SetLimit(limit float64) {
-	klog.V(5).Info("Set ", ri.name, ": ", limit)
+	// klog.V(5).Info("Set ", ri.name, ": ", limit)
 	switch ri.name {
 	case "CPU":
 		setFileUint(uint64(limit)*1000, ri.path, "/cpu.cfs_quota_us")
@@ -116,19 +116,18 @@ const (
 
 // Pod Info are managed by KuScale
 type PodInfo struct {
-	PodName       string
-	ID            string
-	imageName     string
-	podStatus     PodStatus
-	reservedToken uint64
-	totalToken    float64
-	expectedToken float64
+	PodName        string
+	ID             string
+	imageName      string
+	podStatus      PodStatus
+	reservedToken  uint64
+	totalToken     float64
+	expectedToken  float64
+	availableToken float64
 
-	tokenQueue       float64
-	tokenReservation float64
-	availableToken   float64
-
-	UpdatedCount int64 // Update Count from KuScale
+	TokenQueue       float64
+	TokenReservation float64
+	UpdatedCount     int64 // Update Count from KuScale
 
 	// pid           string
 	// interfaceName string
@@ -172,24 +171,47 @@ func (pi *PodInfo) UpdateUsage() {
 	}
 }
 
+func (pi *PodInfo) InitUpdateUsage() {
+
+	for _, ri := range pi.RIs {
+		ri.usage = ri.getCurrentUsage()
+	}
+}
+
 // Caclulate Token Queue for pod
 func (pi *PodInfo) UpdateTokenQueue(elaspedTimePerSecond float64) {
 
-	tokenQueue := pi.tokenQueue + float64(pi.tokenReservation)*elaspedTimePerSecond
+	//TokenQueue := pi.TokenQueue + pi.TokenReservation*elaspedTimePerSecond
+	// Need To Change
+	TokenQueue := pi.TokenReservation * elaspedTimePerSecond
+
 	for _, ri := range pi.RIs {
 		limit, price := ri.Limit(), ri.Price()
-		tokenQueue = tokenQueue - price*limit*elaspedTimePerSecond
+		TokenQueue = TokenQueue - price*limit*elaspedTimePerSecond
 	}
-	if tokenQueue < 0 {
-		tokenQueue = 0
+	if TokenQueue < 0 {
+		TokenQueue = 0
 	}
-	pi.tokenQueue = tokenQueue
 
-	klog.V(10).Info("Update tokenQueue for Pod: ", pi.PodName, " Total Token : ", pi.tokenQueue, " Token Reservation : ", pi.tokenReservation)
+	// Need to Change
+	if TokenQueue >= pi.TokenReservation {
+		TokenQueue = pi.TokenReservation
+	}
+
+	pi.TokenQueue = TokenQueue
+
+	klog.V(10).Info("Update TokenQueue for Pod: ", pi.PodName, " Total Token : ", pi.TokenQueue, " Token Reservation : ", pi.TokenReservation)
 }
 
 // Caclulate Dynamic Weight for each resource in the pod
-func (pi *PodInfo) UpdateDynamicWeight() {
+func (pi *PodInfo) UpdateDynamicWeight(staticV float64) {
+
+	if staticV > 0 {
+		for _, ri := range pi.RIs {
+			ri.dynamicWeight = ri.price * staticV
+		}
+		return
+	}
 
 	// Get Sum of AvgUsage
 	sumAvgUsage := 0.
@@ -197,11 +219,21 @@ func (pi *PodInfo) UpdateDynamicWeight() {
 		sumAvgUsage += ri.AvgUsage() + 1
 	}
 
+	// Weight
+	W := 15.
+	AVGDIFF := 0.
+	for _, ri := range pi.RIs {
+		AVGDIFF += (ri.AvgUsage() + 1.) / (ri.Usage() + 1.)
+	}
+	W = AVGDIFF * W
+	klog.V(10).Info("Update W : ", W)
+
 	// Update Dynamic Weight
 	for rn, ri := range pi.RIs {
 		avgUsage, price := ri.AvgUsage()+1, ri.Price()
-		ri.dynamicWeight = price * sumAvgUsage / avgUsage
-		klog.V(10).Info("Update DynamicWeight for Pod: ", pi.PodName, ", ", rn, "'s Dynamic Weight : ", ri.dynamicWeight)
+		ri.dynamicWeight = W * price * sumAvgUsage / avgUsage
+		klog.V(10).Info("Update DynamicWeight for Pod: ", pi.PodName, ", ", rn, "'s Dynamic Weight : ", ri.dynamicWeight,
+			" avg : ", ri.avgUsage)
 	}
 
 }
