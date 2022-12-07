@@ -17,6 +17,7 @@ package kumonitor
 import (
 	"time"
 
+	"github.com/sslab-konkuk/KuScale/pkg/kuprofiler"
 	"k8s.io/klog"
 )
 
@@ -66,6 +67,9 @@ gauss:
 }
 
 func (m *Monitor) Autoscale() {
+	startTime := kuprofiler.StartTime()
+	defer kuprofiler.Record("Autoscale", startTime)
+
 	m.updateAllpods()
 }
 
@@ -113,7 +117,7 @@ func (m *Monitor) updateAllpods() {
 		m.fill(matrixInfo, matrix)
 		printMatrix(matrix)
 		result, _ := gaussJordan(matrix, matrixInfo.totalColumnSize, matrixInfo.totalRowSize)
-		klog.Info("Result = ", result)
+		klog.V(10).Info("Result = ", result)
 		m.updatePodInfo(matrixInfo, result)
 	}
 }

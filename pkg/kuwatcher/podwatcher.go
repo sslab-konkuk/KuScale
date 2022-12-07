@@ -2,10 +2,10 @@ package kuwatcher
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"time"
 
+	"github.com/sslab-konkuk/KuScale/pkg/kuprofiler"
 	"google.golang.org/grpc"
 	"k8s.io/klog"
 	podresourcesapi "k8s.io/kubelet/pkg/apis/podresources/v1"
@@ -17,64 +17,54 @@ const (
 	connectionTimeout = 10 * time.Second
 )
 
-var flag int
-var updatedPodMap map[string]string
-
 type PodWathcer struct {
+	updatedPodMap map[string]string
+
 	client podresourcesapi.PodResourcesListerClient
+	conn   *grpc.ClientConn
 }
 
-func connectToServer(socket string) (*grpc.ClientConn, func(), error) {
+var pw *PodWathcer
+
+/*
+Func Name : InitPodWatcher()
+Objective : 1) Initialize Pod Watcher
+*/
+
+func InitPodWatcher() {
+	pw = &PodWathcer{updatedPodMap: make(map[string]string)}
 	ctx, cancel := context.WithTimeout(context.Background(), connectionTimeout)
 	defer cancel()
 
-	conn, err := grpc.DialContext(ctx, socket, grpc.WithInsecure(), grpc.WithBlock(),
+	var err error
+	pw.conn, err = grpc.DialContext(ctx, socketPath, grpc.WithInsecure(), grpc.WithBlock(),
 		grpc.WithDialer(func(addr string, timeout time.Duration) (net.Conn, error) {
 			return net.DialTimeout("unix", addr, timeout)
 		}),
 	)
 
 	if err != nil {
-		return nil, func() {}, fmt.Errorf("failure connecting to %s: %v", socket, err)
+		klog.Errorf("failure connecting to %s: %v", socketPath, err)
 	}
 
-	return conn, func() { conn.Close() }, nil
+	pw.client = podresourcesapi.NewPodResourcesListerClient(pw.conn)
+
+	pw.updatedPodMap = make(map[string]string)
 }
 
-func getPodInfoFromKubelet() (*podresourcesapi.ListPodResourcesResponse, error) {
-	conn, cleanup, err := connectToServer(socketPath)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-
-	client := podresourcesapi.NewPodResourcesListerClient(conn)
+func Scan() ([]string, error) {
+	startTime := kuprofiler.StartTime()
+	defer kuprofiler.Record("kuwatcher_scan", startTime)
 
 	ctx, cancel := context.WithTimeout(context.Background(), connectionTimeout)
 	defer cancel()
 
-	resp, err := client.List(ctx, &podresourcesapi.ListPodResourcesRequest{})
+	resp, err := pw.client.List(ctx, &podresourcesapi.ListPodResourcesRequest{})
 	if err != nil {
-		return nil, fmt.Errorf("failure getting pod resources %v", err)
+		klog.Errorf("pw.client.List")
 	}
-
-	return resp, nil
-}
-
-func Scan() ([]string, error) {
 
 	var ret []string
-
-	if flag == 0 {
-		updatedPodMap = make(map[string]string)
-		flag = 1
-	}
-
-	resp, err := getPodInfoFromKubelet()
-	if err != nil {
-		klog.Error("Error in getPodInfoFromKubelet ", err)
-		return ret, nil
-	}
 
 	for _, pod := range resp.GetPodResources() {
 		tokenSize := 0
@@ -85,15 +75,19 @@ func Scan() ([]string, error) {
 					tokenSize = tokenSize + 1
 				}
 			}
-			if _, ok := updatedPodMap[podName]; ok {
+			if _, ok := pw.updatedPodMap[podName]; ok {
 				continue
 			}
 			if tokenSize > 0 {
 				klog.V(4).Infof("Pod: %s, Container: %s , %s:= %d", podName, container.GetName(), tokenName, tokenSize)
-				updatedPodMap[podName] = podName
+				pw.updatedPodMap[podName] = podName
 				ret = append(ret, podName)
 			}
 		}
 	}
 	return ret, nil
+}
+
+func ExitPodWatcher() {
+	pw.conn.Close()
 }

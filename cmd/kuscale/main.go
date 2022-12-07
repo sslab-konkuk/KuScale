@@ -30,7 +30,9 @@ import (
 	bpfwatcher "github.com/sslab-konkuk/KuScale/pkg/bpfwatcher"
 	kuexporter "github.com/sslab-konkuk/KuScale/pkg/kuexporter"
 	"github.com/sslab-konkuk/KuScale/pkg/kumonitor"
+	kuprofiler "github.com/sslab-konkuk/KuScale/pkg/kuprofiler"
 	kutokenmanager "github.com/sslab-konkuk/KuScale/pkg/kutokenmanager"
+	kuwatcher "github.com/sslab-konkuk/KuScale/pkg/kuwatcher"
 	// "github.com/sslab-konkuk/KuScale/pkg/kumonitor/docker"
 )
 
@@ -59,21 +61,24 @@ func init() {
 	flag.Int64Var(&monitoringPeriod, "MonitoringPeriod", 2, "MonitoringPeriod")
 	flag.Int64Var(&windowSize, "WindowSize", 15, "WindowSize")
 
-	flag.BoolVar(&monitoringMode, "MonitoringMode", true, "MonitoringMode")
-	flag.BoolVar(&exporterMode, "exporterMode", true, "exporterMode")
+	flag.BoolVar(&monitoringMode, "MonitoringMode", false, "MonitoringMode")
+	flag.BoolVar(&exporterMode, "exporterMode", false, "exporterMode")
 	flag.BoolVar(&bpfwatcherMode, "bpfwatcherMode", false, "bpfwatcherMode")
 
-	flag.Float64Var(&staticV, "staticV", 0, "Static V Weight") //TODO: Need to Remove the static V
+	flag.Float64Var(&staticV, "staticV", 10, "Static V Weight") //TODO: Need to Remove the static V
 }
 
 func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
 	stopCh := signals.SetupSignalHandler()
+	ebpfCh := make(chan string)
+	kuprofiler.NewLatencyInfo(true)
+	kuwatcher.InitPodWatcher()
 
 	// Run Ku Monitor
-	monitor := kumonitor.NewMonitor(monitoringPeriod, windowSize, nodeName, monitoringMode, staticV, stopCh)
-	go monitor.Run(stopCh)
+	monitor := kumonitor.NewMonitor(monitoringPeriod, windowSize, nodeName, monitoringMode, staticV)
+	go monitor.Run(ebpfCh, stopCh)
 
 	// Run Promethuse Exporter
 	if exporterMode {
@@ -83,7 +88,7 @@ func main() {
 	// Run Ku BPF Watcher
 	if bpfwatcherMode {
 		bpfWatcher := bpfwatcher.NewbpfWatcher()
-		go bpfWatcher.Run(monitor, stopCh)
+		go bpfWatcher.Run(ebpfCh, stopCh)
 	}
 
 	// Run KU Device Plugin
@@ -92,37 +97,12 @@ func main() {
 		pluginapi.DevicePluginPath+"dorry-token.sock")
 	go tokenManager.Run(stopCh)
 
-	// if false {
-	// 	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
-	// 	if err != nil {
-	// 		klog.Fatalf("Error building kubeconfig: %s", err.Error())
-	// 	}
-	// 	cfg.QPS = 1024.0
-	// 	cfg.Burst = 1024
-
-	// 	kubeClient, err := kubernetes.NewForConfig(cfg)
-	// 	if err != nil {
-	// 		klog.Fatalf("Error building kubernetes clientset: %s", err.Error())
-	// 	}
-
-	// 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
-
-	// 	controller := kucontroller.NewController(kubeClient, kubeInformerFactory.Core().V1().Pods(), monitor)
-
-	// 	// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)
-	// 	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
-	// 	kubeInformerFactory.Start(stopCh)
-
-	// 	if err = controller.Run(threadNum, stopCh); err != nil {
-	// 		klog.Fatalf("Error running controller: %s", err.Error())
-	// 	}
-	// }
-
 	klog.V(4).Info("Started Kuscale")
 	<-stopCh
 	klog.V(4).Info("Shutting All Down")
 	// monitor.WaitAllContainers()
 	time.Sleep(time.Second * 2)
+	kuwatcher.ExitPodWatcher()
+	kuprofiler.Summary()
 	klog.V(4).Info("Shutted All Down")
-
 }
