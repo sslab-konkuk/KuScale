@@ -1,17 +1,11 @@
-package kuscale
+package kuwatcher
 
 import (
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/fsnotify/fsnotify"
-	// "context"
-	// "fmt"
-	// "net"
-	// "time"
-	// "path"
-	// "google.golang.org/grpc"
-	// podresourcesapi "k8s.io/kubelet/pkg/apis/podresources/v1alpha1"
 )
 
 func newFSWatcher(files ...string) (*fsnotify.Watcher, error) {
@@ -31,9 +25,16 @@ func newFSWatcher(files ...string) (*fsnotify.Watcher, error) {
 	return watcher, nil
 }
 
-func newOSWatcher(sigs ...os.Signal) chan os.Signal {
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, sigs...)
-
-	return sigChan
+func SignalWatcher() chan string {
+	stopCh := make(chan string)
+	shutdownSignals := []os.Signal{os.Interrupt, syscall.SIGTERM}
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, shutdownSignals...)
+	go func() {
+		<-sigCh
+		close(stopCh)
+		<-sigCh
+		os.Exit(1)
+	}()
+	return stopCh
 }

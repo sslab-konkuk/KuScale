@@ -3,6 +3,7 @@ package kucontroller
 import (
 	"fmt"
 	"strconv"
+
 	// "strings"
 	// "time"
 
@@ -124,7 +125,7 @@ func NewController(
 // as syncing informer caches and starting workers. It will block until stopCh
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
-func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
+func (c *Controller) Run(threadiness int, stopCh chan string) error {
 	defer utilruntime.HandleCrash()
 	defer c.workqueue.ShutDown()
 

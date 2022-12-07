@@ -51,7 +51,7 @@ func Record(funcName string, startTime int64) {
 	}
 
 	elapsedTime := float64(current - startTime)
-	klog.V(4).Info("Record ", funcName, " : ", startTime, ":", latencyData)
+	klog.V(4).Info("Record ", funcName, " : ", startTime, ": ", elapsedTime)
 	latencyData.duration = append(latencyData.duration, elapsedTime)
 	li.latencyData[funcName] = latencyData
 	return

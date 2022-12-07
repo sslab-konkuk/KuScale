@@ -23,6 +23,7 @@ type KuTokenManager struct {
 	totalIDs                   int
 	server                     *grpc.Server
 	stop                       chan interface{}
+	tokenReqCh                 chan string
 	health                     chan string
 	healthCheckIntervalSeconds time.Duration
 }
@@ -142,11 +143,12 @@ func (ktm *KuTokenManager) Start() error {
 	return nil
 }
 
-func (ktm *KuTokenManager) Run(stopCh <-chan struct{}) {
+func (ktm *KuTokenManager) Run(stopCh, tokenReqCh chan string) {
 
 	InsmodGpuMod()
 
 	ktm.stop = make(chan interface{})
+	ktm.tokenReqCh = tokenReqCh
 
 	err := ktm.Start()
 	if err != nil {
@@ -241,27 +243,29 @@ func (ktm *KuTokenManager) Allocate(ctx context.Context, reqs *pluginapi.Allocat
 	responses := pluginapi.AllocateResponse{}
 
 	for _, req := range reqs.ContainerRequests {
-		klog.V(4).Infof("Allocate %d %s resource", len(req.DevicesIDs), ktm.tokenName)
-		responses.ContainerResponses = append(responses.ContainerResponses, &pluginapi.ContainerAllocateResponse{
-			Envs: map[string]string{
-				"LD_PRELOAD":        "/kubeshare/library/libgemhook.so.1",
-				"LD_LIBRARY_PATH":   "/kubeshare/library/:$LD_LIBRARY_PATH",
-				"GEMINI_IPC_DIR":    "/kubeshare/scheduler/ipc/",
-				"GEMINI_GROUP_NAME": fmt.Sprintf("%d", ktm.totalIDs),
-			},
-			Mounts: []*pluginapi.Mount{
-				{
-					ContainerPath: "/kubeshare", //TODO: Need to change it the specific path
-					HostPath:      "/kubeshare",
+		klog.V(4).Infof("Allocate %d %s resource to ID : %d", len(req.DevicesIDs), ktm.tokenName, ktm.totalIDs)
+		responses.ContainerResponses = append(responses.ContainerResponses,
+			&pluginapi.ContainerAllocateResponse{
+				Envs: map[string]string{
+					"LD_PRELOAD":        "/kubeshare/library/libgemhook.so.1",
+					"LD_LIBRARY_PATH":   "/kubeshare/library/:$LD_LIBRARY_PATH",
+					"GEMINI_IPC_DIR":    "/kubeshare/scheduler/ipc/",
+					"GEMINI_GROUP_NAME": fmt.Sprintf("%d", ktm.totalIDs),
 				},
-				{
-					ContainerPath: "/ku-gpu", //TODO: Need to change it the specific path
-					HostPath:      fmt.Sprintf("/sys/kernel/gpu/IDs/%d", ktm.totalIDs),
+				Mounts: []*pluginapi.Mount{
+					{
+						ContainerPath: "/kubeshare", //TODO: Need to change it the specific path
+						HostPath:      "/kubeshare",
+					},
+					{
+						ContainerPath: "/ku-gpu", //TODO: Need to change it the specific path
+						HostPath:      fmt.Sprintf("/sys/kernel/gpu/IDs/%d", ktm.totalIDs),
+					},
 				},
 			},
-		})
+		)
 	}
-
+	ktm.tokenReqCh <- fmt.Sprintf("%d", ktm.totalIDs)
 	ktm.totalIDs = ktm.totalIDs + 1
 	return &responses, nil
 }
