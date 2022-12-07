@@ -118,6 +118,7 @@ const (
 type PodInfo struct {
 	PodName        string
 	ID             string
+	dockerID       string
 	imageName      string
 	status         PodStatus
 	reservedToken  uint64

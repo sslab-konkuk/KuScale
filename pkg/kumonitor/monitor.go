@@ -15,9 +15,11 @@ package kumonitor
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/docker/docker/client"
+	"github.com/sslab-konkuk/KuScale/pkg/kuprofiler"
 	kuwatcher "github.com/sslab-konkuk/KuScale/pkg/kuwatcher"
 	"k8s.io/klog"
 )
@@ -38,7 +40,6 @@ type Monitor struct {
 	config  Configuraion
 	staticV float64
 
-	NotReadyPodMap  PodInfoMap
 	RunningPodMap   PodInfoMap
 	CompletedPodMap PodInfoMap
 	podIDtoNameMap  PodIDtoNameMap
@@ -51,14 +52,12 @@ func NewMonitor(
 	monitoringPeriod, windowSize int64,
 	nodeName string,
 	monitoringMode bool,
-	staticV float64,
-	stopCh <-chan struct{}) *Monitor {
+	staticV float64) *Monitor {
 
 	klog.V(4).Info("Creating New Monitor")
 	config := Configuraion{monitoringPeriod, windowSize, nodeName, monitoringMode}
 	klog.V(4).Info("Configuration ", config)
 	monitor := &Monitor{config: config,
-		NotReadyPodMap:  make(PodInfoMap),
 		RunningPodMap:   make(PodInfoMap),
 		CompletedPodMap: make(PodInfoMap),
 		podIDtoNameMap:  make(PodIDtoNameMap),
@@ -68,17 +67,30 @@ func NewMonitor(
 }
 
 /*
+Func Name : FindPodNameById()
+Objective : 1) Find the Pod Name in RunningPodMap Using ID
+*/
+func (m *Monitor) FindPodNameById(id string) *PodInfo {
+	for _, pi := range m.RunningPodMap {
+		if pi.dockerID == id {
+			return pi
+		}
+	}
+
+	return nil
+}
+
+/*
 Func Name : UpdateNewPod()
 Objective : 1) Initalize New Pod
 			2) Pulling and Wait for New Pod
 */
 func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
-
 	if podName == "" {
 		return
 	}
 	// Check This Pod is Not in RunningPodMap
-	if _, ok := m.RunningPodMap[podName]; ok {
+	if _, ok := m.RunningPodMap[podName]; !ok {
 		klog.V(4).Info("No Need to Update Live Pod ", podName)
 		return
 	}
@@ -95,6 +107,9 @@ func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 		podInfo.RIs["CPU"].path, podInfo.RIs["GPU"].path, _ = m.getPath(podName)
 		if CheckPodPath(podInfo) {
 			klog.V(5).Info("Ready and Start", podName)
+			docker := strings.Split(podInfo.RIs["CPU"].path, "/")
+			podInfo.dockerID = strings.Split(docker[len(docker)-1], "-")[1][:12]
+			klog.V(1).Info("New Pod : docker ID : ", podInfo.dockerID)
 			podInfo.SetInitLimit()
 			podInfo.InitUpdateUsage()
 			m.RunningPodMap[podName] = podInfo
@@ -107,9 +122,11 @@ func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 /*
 Func Name : PullNewPods()
 Objective : 1) Pull New Pods From KuWatcher connected with kubelet
-			2) Update New Pods
 */
 func (m *Monitor) PullNewPods() {
+	startTime := kuprofiler.StartTime()
+	defer kuprofiler.Record("PullNewPods", startTime)
+
 	podNameList, _ := kuwatcher.Scan()
 
 	for _, name := range podNameList {
@@ -123,6 +140,8 @@ Objective : 1) Monitoring the pods in RunningPodMap
 			2) Check and Remove Completed Pods
 */
 func (m *Monitor) MontiorAllPods() {
+	startTime := kuprofiler.StartTime()
+	defer kuprofiler.Record("MontiorAllPods", startTime)
 
 	rpmLen := len(m.RunningPodMap)
 	monitorCh := make(chan *PodInfo, rpmLen)
@@ -155,17 +174,26 @@ func (m *Monitor) MontiorAllPods() {
 	}
 }
 
-func (m *Monitor) Monitoring(stopCh <-chan struct{}) {
+func (m *Monitor) Monitoring(ebpfCh chan string, stopCh <-chan struct{}) {
 	klog.V(5).Info("Monitoring Start")
 	timerCh := time.Tick(time.Second * time.Duration(m.config.monitoringPeriod))
 	for {
 		select {
 		case <-stopCh:
 			return
-
+		case <-ebpfCh:
+			lastExpiredTime := time.Now().UnixNano()
+			klog.V(10).Info("AutoScaling By EBPF")
+			// pi := m.FindPodNameById(dockerId)
+			// if pi != nil {
+			// 	pi.
+			// }
+			m.PullNewPods()
+			m.MontiorAllPods()
+			m.Autoscale()
+			m.lastUpdatedTime = lastExpiredTime
 		case timeTick := <-timerCh:
 			m.lastExpiredTime = timeTick.UnixNano()
-
 			m.PullNewPods()
 			m.MontiorAllPods()
 			m.Autoscale()
@@ -174,11 +202,12 @@ func (m *Monitor) Monitoring(stopCh <-chan struct{}) {
 	}
 }
 
-func (m *Monitor) Run(stopCh <-chan struct{}) {
+func (m *Monitor) Run(ebpfCh chan string, stopCh <-chan struct{}) {
+
 	m.ConnectDocker()
 
 	klog.V(4).Info("Starting Monitor")
-	go m.Monitoring(stopCh)
+	go m.Monitoring(ebpfCh, stopCh)
 	klog.V(4).Info("Started Monitor")
 	<-stopCh
 	klog.V(4).Info("Shutting monitor down")
