@@ -280,3 +280,35 @@ func UpdateGemini() {
 
 // 	return new
 // }
+
+// func (m *Monitor) printAcct() {
+// 	for _, pi := range m.CompletedPodMap {
+// 		var prev AcctUsageAndTime
+
+// 		ri := pi.RIs["CPU"]
+// 		for _, timeacct := range ri.acctUsageAndTime {
+// 			curr := timeacct
+// 			cpupercent := float64(curr.acctUsage-prev.acctUsage) * 100. / float64(curr.timeStamp-prev.timeStamp)
+// 			/* Time, CPU, GPU, cuLaunchKernel, cuCtxSynchronize, cuMemAlloc_v2, cuMemFree_v2*/
+// 			fmt.Print(timeacct.timeStamp, ",", cpupercent, ",0,0,0\n")
+// 			prev = timeacct
+// 		}
+// 		ri = pi.RIs["GPU"]
+// 		for _, timeacct := range ri.acctUsageAndTime {
+// 			curr := timeacct
+// 			gpupercent := float64(curr.acctUsage-prev.acctUsage) * 100. / float64(curr.timeStamp-prev.timeStamp)
+// 			fmt.Print(timeacct.timeStamp, ",0,", gpupercent, ",0,0\n")
+// 			prev = timeacct
+// 		}
+
+// 	}
+// }
+// func (m *Monitor) PrintPodList() {
+// 	for name := range m.RunningPodMap {
+// 		klog.V(5).Info("Live Pod Name: ", name)
+// 	}
+
+// 	for name := range m.CompletedPodMap {
+// 		klog.V(5).Info("Completed Pod Name: ", name)
+// 	}
+// }

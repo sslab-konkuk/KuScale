@@ -119,7 +119,7 @@ type PodInfo struct {
 	PodName        string
 	ID             string
 	imageName      string
-	podStatus      PodStatus
+	status         PodStatus
 	reservedToken  uint64
 	totalToken     float64
 	expectedToken  float64
@@ -141,8 +141,8 @@ func NewPodInfo(podName string, RNs []ResourceName) *PodInfo {
 
 	klog.V(5).Infof("Makeing New Pod Info of %s", podName)
 	podInfo := PodInfo{
-		PodName:   podName,
-		podStatus: PodInitializing,
+		PodName: podName,
+		status:  PodInitializing,
 	}
 
 	podInfo.RNs = RNs
