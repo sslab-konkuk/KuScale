@@ -61,7 +61,10 @@ func getPodInfoFromKubelet() (*podresourcesapi.ListPodResourcesResponse, error) 
 	return resp, nil
 }
 
-func Scan() (string, error) {
+func Scan() ([]string, error) {
+
+	var ret []string
+
 	if flag == 0 {
 		updatedPodMap = make(map[string]string)
 		flag = 1
@@ -69,14 +72,13 @@ func Scan() (string, error) {
 
 	resp, err := getPodInfoFromKubelet()
 	if err != nil {
-		klog.Info("Error in getPodInfoFromKubelet ", err)
-		return "", nil
+		klog.Error("Error in getPodInfoFromKubelet ", err)
+		return ret, nil
 	}
 
 	for _, pod := range resp.GetPodResources() {
 		tokenSize := 0
 		podName := pod.GetName()
-
 		for _, container := range pod.GetContainers() {
 			for _, device := range container.GetDevices() {
 				if device.GetResourceName() == tokenName {
@@ -88,27 +90,10 @@ func Scan() (string, error) {
 			}
 			if tokenSize > 0 {
 				klog.V(4).Infof("Pod: %s, Container: %s , %s:= %d", podName, container.GetName(), tokenName, tokenSize)
-				// // println("Pod %s, Container %s ",pod.GetName(), container.GetName(), resourceToken, check)
-
-				// PodInfo := PodInfo{
-				// 	podName:       podName,
-				// 	namespace:     pod.GetNamespace(),
-				// 	containerName: container.GetName(),
-				// 	reservedToken:    tokenSize,
-				// 	initFlag:      false,
-				// 	cpuPath:       getCpuPath(podName),
-				// 	gpuPath:       getGpuPath(podName),
-				// 	rxPath:        path.Join("/home/proc/", getPid(podName), "/net/dev"),
-				// 	interfaceName: getInterfaceName(podName),
-				// 	iterModPath:   getIterModPath(podName),
-				// }
-				// pm[podName] = PodInfo
-				// new = true
-				// tokenSize = 0
 				updatedPodMap[podName] = podName
-				return podName, nil
+				ret = append(ret, podName)
 			}
 		}
 	}
-	return "", nil
+	return ret, nil
 }
