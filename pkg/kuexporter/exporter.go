@@ -136,7 +136,7 @@ func NewExporter(reg prometheus.Registerer, m *kumonitor.Monitor, nodeName strin
 	return dm
 }
 
-func ExporterRun(m *kumonitor.Monitor, nodeName string, stopCh <-chan struct{}) {
+func ExporterRun(m *kumonitor.Monitor, nodeName string, stopCh chan string) {
 
 	klog.V(4).Info("Starting Exporter")
 

@@ -20,7 +20,6 @@ import (
 
 	"github.com/docker/docker/client"
 	"github.com/sslab-konkuk/KuScale/pkg/kuprofiler"
-	kuwatcher "github.com/sslab-konkuk/KuScale/pkg/kuwatcher"
 	"k8s.io/klog"
 )
 
@@ -90,7 +89,7 @@ func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 		return
 	}
 	// Check This Pod is Not in RunningPodMap
-	if _, ok := m.RunningPodMap[podName]; !ok {
+	if _, ok := m.RunningPodMap[podName]; ok {
 		klog.V(4).Info("No Need to Update Live Pod ", podName)
 		return
 	}
@@ -116,21 +115,6 @@ func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 			return
 		}
 		klog.V(10).Info("Not Ready because no Path ", podName)
-	}
-}
-
-/*
-Func Name : PullNewPods()
-Objective : 1) Pull New Pods From KuWatcher connected with kubelet
-*/
-func (m *Monitor) PullNewPods() {
-	startTime := kuprofiler.StartTime()
-	defer kuprofiler.Record("PullNewPods", startTime)
-
-	podNameList, _ := kuwatcher.Scan()
-
-	for _, name := range podNameList {
-		go m.UpdateNewPod(name, 300, 10)
 	}
 }
 
@@ -174,13 +158,16 @@ func (m *Monitor) MontiorAllPods() {
 	}
 }
 
-func (m *Monitor) Monitoring(ebpfCh chan string, stopCh <-chan struct{}) {
+func (m *Monitor) Monitoring(stopCh, ebpfCh, newPodCh chan string) {
 	klog.V(5).Info("Monitoring Start")
 	timerCh := time.Tick(time.Second * time.Duration(m.config.monitoringPeriod))
 	for {
 		select {
 		case <-stopCh:
 			return
+		case podName := <-newPodCh:
+			klog.V(10).Info("Get New PodCh : ", podName)
+			go m.UpdateNewPod(podName, 300, 10)
 		case <-ebpfCh:
 			lastExpiredTime := time.Now().UnixNano()
 			klog.V(10).Info("AutoScaling By EBPF")
@@ -188,13 +175,14 @@ func (m *Monitor) Monitoring(ebpfCh chan string, stopCh <-chan struct{}) {
 			// if pi != nil {
 			// 	pi.
 			// }
-			m.PullNewPods()
 			m.MontiorAllPods()
 			m.Autoscale()
 			m.lastUpdatedTime = lastExpiredTime
 		case timeTick := <-timerCh:
 			m.lastExpiredTime = timeTick.UnixNano()
-			m.PullNewPods()
+			if len(m.RunningPodMap) == 0 {
+				continue
+			}
 			m.MontiorAllPods()
 			m.Autoscale()
 			m.lastUpdatedTime = m.lastExpiredTime
@@ -202,12 +190,12 @@ func (m *Monitor) Monitoring(ebpfCh chan string, stopCh <-chan struct{}) {
 	}
 }
 
-func (m *Monitor) Run(ebpfCh chan string, stopCh <-chan struct{}) {
+func (m *Monitor) Run(stopCh, ebpfCh, newPodCh chan string) {
 
 	m.ConnectDocker()
 
 	klog.V(4).Info("Starting Monitor")
-	go m.Monitoring(ebpfCh, stopCh)
+	go m.Monitoring(stopCh, ebpfCh, newPodCh)
 	klog.V(4).Info("Started Monitor")
 	<-stopCh
 	klog.V(4).Info("Shutting monitor down")
