@@ -15,9 +15,30 @@ package kuscale
 // 	"strconv"
 // )
 
-
+// unc (ri *ResourceInfo) updateAcctUsage() []AcctUsageAndTime {
+// 	switch ri.name {
+// 	case "CPU":
+// 		acctUsage, timeStamp := GetCpuAcctUsage(ri.path)
+// 		ri.acctUsageAndTime = append(ri.acctUsageAndTime,
+// 			AcctUsageAndTime{timeStamp: timeStamp, acctUsage: acctUsage})
+// 		return ri.acctUsageAndTime
+// 	case "GPU":
+// 		acctUsage, timeStamp := GetGpuAcctUsage(ri.path)
+// 		ri.acctUsageAndTime = append(ri.acctUsageAndTime,
+// 			AcctUsageAndTime{timeStamp: timeStamp, acctUsage: acctUsage})
+// 		return ri.acctUsageAndTime
+// 		// case "RX":
+// 		// 	ifaceStats, err := scanInterfaceStats(ri.path) // TODO : NEED TO READ HOST NET DEV
+// 		// 	if err != nil {
+// 		// 		klog.Infof("couldn't read network stats: ", err)
+// 		// 		return 0
+// 		// 	}
+// 		// 	return 8 * ifaceStats[0].RxBytes // Make Bits
+// 	}
+// 	return
+// }
 // func printIpNeigh() {
-	
+
 // 	var msg netlink.Ndmsg
 // 	neighs, _ := netlink.NeighListExecute(msg)
 
@@ -29,7 +50,7 @@ package kuscale
 // }
 
 // func printIpRoute() {
-	
+
 // 	routes, _ := netlink.RouteList(nil, 0)
 
 // 	for nm, route := range routes {
@@ -65,7 +86,7 @@ package kuscale
 // }
 
 // func printIpLink() {
-	
+
 // 	links, _ := netlink.LinkList()
 
 // 	for nm, link := range links {
@@ -145,7 +166,7 @@ package kuscale
 // 	rxBits := uint64(rxLimit) * miliRX
 // 	err := CreateIngressQdisc(rxBits, 2 * rxBits, pi.interfaceName)
 // 	if err != nil {
-// 		return fmt.Errorf("SetFirstRx : %s", err) 
+// 		return fmt.Errorf("SetFirstRx : %s", err)
 // 	}
 // 	pi.CI.RIs["RX"].SetLimit(rxLimit)
 // 	return nil
@@ -213,8 +234,6 @@ package kuscale
 // 	return float64(netlink.TIME_UNITS_PER_SEC) * (latencyInMillis / 1000.0)
 // }
 
-
-
 // type InterfaceStats struct {
 // 	// The name of the interface.
 // 	Name string `json:"name"`
@@ -278,7 +297,7 @@ package kuscale
 // 		line := scanner.Text()
 // 		line = strings.Replace(line, ":", "", -1)
 // 		fields := strings.Fields(line)
-	
+
 // 		if len(fields) != 17 {
 // 			return nil, fmt.Errorf("invalid interface stats line: %v", line)
 // 		}
@@ -319,6 +338,6 @@ package kuscale
 // 		fmt.Printf("couldn't read network stats: %v", err)
 // 		return nil, err
 // 	}
-	
+
 // 	return ifaceStats, nil
 // }

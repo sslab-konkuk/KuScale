@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	bpf "github.com/iovisor/gobpf/bcc"
+	"github.com/sslab-konkuk/KuScale/pkg/kuprofiler"
 	"k8s.io/klog"
 )
 
@@ -101,6 +102,9 @@ func BpfWatcher(ebpfCh chan string, stopCh chan string) {
 			if err != nil {
 				klog.Errorf("failed to decode received data: %s\n", err)
 				continue
+			}
+			if event.Type == 0 {
+				kuprofiler.RecordStart("SchedulingLatency")
 			}
 			id, ok := pidToIdMap[event.Pid]
 			if ok {

@@ -106,6 +106,15 @@ func GetMtime() (uint64, error) {
 	return uint64(unix.TimespecToNsec(ts)), nil
 }
 
+func GetFileUint(path string) (uint64, bool) {
+	contents, err := ioutil.ReadFile(path)
+	if err != nil {
+		klog.V(2).Infof("couldn't GetFileParamUint: %s", err)
+		return 0, true
+	}
+	return parseUint(strings.TrimSpace(string(contents)), 10, 64), false
+}
+
 /* Get AcctUsage Functions From Cgroup or GPU Virt */
 func GetCpuAcctUsage(cpuPath string) (uint64, uint64) {
 	now := uint64(time.Now().UnixNano())

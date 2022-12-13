@@ -32,23 +32,28 @@ type AcctUsageAndTime struct {
 }
 
 type ResourceInfo struct {
-	name             ResourceName
-	path             string
-	miliScale        int
+	name      ResourceName
+	path      string
+	usagePath string
+	miliScale int
+	price     float64
+
+	/* Limit */
+	initLimit float64
+	limit     float64
+	nextLimit float64
+
+	/* Usage */
 	acctUsageAndTime []AcctUsageAndTime
-	price            float64
-	initLimit        float64
-	limit            float64
 	usage            float64
 	avgUsage         float64 // Weighted Average : (7*ri.avgUsage + ri.usage) / 8
 	dynamicWeight    float64 // Dynamic Weight for this resource 	: price / {avgUsage / sum of avgUsage}
-	avgAvgUsage      float64
 }
 
 func (ri *ResourceInfo) Init(name ResourceName, scale int, price float64) {
 
 	ri.name, ri.miliScale, ri.price = name, scale, price
-	ri.limit, ri.usage, ri.avgUsage, ri.avgUsage, ri.avgAvgUsage = 0, 0, 0, 0, 0
+	ri.limit, ri.usage, ri.avgUsage, ri.avgUsage = 0, 0, 0, 0
 	ri.acctUsageAndTime = append(ri.acctUsageAndTime, AcctUsageAndTime{timeStamp: uint64(time.Now().UnixNano()), acctUsage: 0})
 }
 
@@ -56,7 +61,6 @@ func (ri *ResourceInfo) Limit() float64         { return ri.limit }
 func (ri *ResourceInfo) Usage() float64         { return ri.usage }
 func (ri *ResourceInfo) AvgUsage() float64      { return ri.avgUsage }
 func (ri *ResourceInfo) DynamicWeight() float64 { return ri.dynamicWeight }
-func (ri *ResourceInfo) AvgAvgUsage() float64   { return ri.avgAvgUsage }
 func (ri *ResourceInfo) Price() float64         { return ri.price }
 
 func (ri *ResourceInfo) SetLimit(limit float64) {
@@ -75,34 +79,27 @@ func (ri *ResourceInfo) SetLimit(limit float64) {
 	}
 }
 
-func (ri *ResourceInfo) getAcctUsage() {
-	switch ri.name {
-	case "CPU":
-		acctUsage, timeStamp := GetCpuAcctUsage(ri.path)
-		ri.acctUsageAndTime = append(ri.acctUsageAndTime, AcctUsageAndTime{timeStamp: timeStamp, acctUsage: acctUsage})
-		return
-	case "GPU":
-		acctUsage, timeStamp := GetGpuAcctUsage(ri.path)
-		ri.acctUsageAndTime = append(ri.acctUsageAndTime, AcctUsageAndTime{timeStamp: timeStamp, acctUsage: acctUsage})
-		return
-		// case "RX":
-		// 	ifaceStats, err := scanInterfaceStats(ri.path) // TODO : NEED TO READ HOST NET DEV
-		// 	if err != nil {
-		// 		klog.Infof("couldn't read network stats: ", err)
-		// 		return 0
-		// 	}
-		// 	return 8 * ifaceStats[0].RxBytes // Make Bits
+/*
+Func Name : (ri *ResourceInfo) updateUsage() bool
+	Objective :
+	1) Get AcctUsage From ri.usagePath
+	2) Update usage, avgUsage, acctUsage
+	3) Return completed(=true) when the filepath doesn't exist
+*/
+func (ri *ResourceInfo) updateUsage() bool {
+
+	timeStamp := uint64(time.Now().UnixNano())
+	acctUsage, completed := GetFileUint(ri.usagePath)
+	if completed {
+		return true
 	}
-	return
-}
+	prev := ri.acctUsageAndTime[len(ri.acctUsageAndTime)-1]
 
-func (ri *ResourceInfo) getCurrentUsage() float64 {
-	ri.getAcctUsage()
-	array := ri.acctUsageAndTime
-	monitoringCount := len(array) - 1
-	curr, prev := array[monitoringCount], array[monitoringCount-1]
-
-	return float64(curr.acctUsage-prev.acctUsage) * 100. / float64(curr.timeStamp-prev.timeStamp)
+	ri.usage = float64(acctUsage-prev.acctUsage) * 100. / float64(timeStamp-prev.timeStamp)
+	ri.avgUsage = (7*ri.avgUsage + ri.usage) / 8
+	ri.acctUsageAndTime = append(ri.acctUsageAndTime,
+		AcctUsageAndTime{timeStamp: timeStamp, acctUsage: acctUsage})
+	return false
 }
 
 type PodStatus string
@@ -116,26 +113,32 @@ const (
 
 // Pod Info are managed by KuScale
 type PodInfo struct {
-	PodName        string
-	ID             string
-	dockerID       string
-	imageName      string
+	PodName   string
+	ID        string
+	dockerID  string
+	imageName string
+
 	status         PodStatus
 	reservedToken  uint64
 	totalToken     float64
 	expectedToken  float64
 	availableToken float64
 
+	lastUpdatedTime  int64
+	lastElaspedTime  float64
 	TokenQueue       float64
 	TokenReservation float64
 	UpdatedCount     int64 // Update Count from KuScale
 
-	// pid           string
-	// interfaceName string
-
-	// Resource Names & Resource Infos
 	RNs []ResourceName
 	RIs map[ResourceName]*ResourceInfo
+}
+
+func (pi *PodInfo) CPU() *ResourceInfo {
+	return pi.RIs["CPU"]
+}
+func (pi *PodInfo) GPU() *ResourceInfo {
+	return pi.RIs["GPU"]
 }
 
 func NewPodInfo(podName string, RNs []ResourceName) *PodInfo {
@@ -163,48 +166,56 @@ func NewPodInfo(podName string, RNs []ResourceName) *PodInfo {
 	return &podInfo
 }
 
-func (pi *PodInfo) UpdateUsage() {
+/*
+Func Name : (pi *PodInfo) UpdatePodUsage()
+	Objective :
+	1) Monitoring the pods in RunningPodMap
+	2) Check and Remove Completed Pods
+*/
+func (pi *PodInfo) UpdatePodUsage() {
+	// startTime := kuprofiler.StartTime()
+	// defer kuprofiler.Record("UpdatePodUsage", startTime)
 
 	for _, ri := range pi.RIs {
-		ri.usage = ri.getCurrentUsage()
-		ri.avgUsage = (7*ri.avgUsage + ri.usage) / 8
-		ri.avgAvgUsage = (7*ri.avgAvgUsage + ri.avgUsage) / 8
+		completed := ri.updateUsage()
+		if completed {
+			klog.V(10).Info(pi.PodName, " may be finished because the filepath doesn't exist")
+			pi.status = PodCompleted
+		}
 	}
+	klog.V(4).Info(pi.PodName, "'s usages are ", int64(pi.RIs["CPU"].Usage()), int64(pi.RIs["GPU"].Usage()))
 }
 
-func (pi *PodInfo) InitUpdateUsage() {
+/*
+Func Name : (pi *PodInfo) UpdateTokenQueue()
+	Objective :
+	1) Update TokenQueue
+*/
+func (pi *PodInfo) UpdateTokenQueue() {
 
-	for _, ri := range pi.RIs {
-		ri.usage = ri.getCurrentUsage()
-	}
-}
-
-// Caclulate Token Queue for pod
-func (pi *PodInfo) UpdateTokenQueue(elaspedTimePerSecond float64) {
-
-	//TokenQueue := pi.TokenQueue + pi.TokenReservation*elaspedTimePerSecond
-	// Need To Change
-	TokenQueue := pi.TokenReservation * elaspedTimePerSecond
+	TokenQueue := pi.TokenQueue + pi.TokenReservation*pi.lastElaspedTime
 
 	for _, ri := range pi.RIs {
 		limit, price := ri.Limit(), ri.Price()
-		TokenQueue = TokenQueue - price*limit*elaspedTimePerSecond
+		TokenQueue = TokenQueue - price*limit*pi.lastElaspedTime
 	}
 	if TokenQueue < 0 {
 		TokenQueue = 0
-	}
-
-	// Need to Change
-	if TokenQueue >= pi.TokenReservation {
+	} else if TokenQueue >= pi.TokenReservation {
+		// TODO : Update Max
 		TokenQueue = pi.TokenReservation
 	}
 
 	pi.TokenQueue = TokenQueue
 
-	klog.V(10).Info("Update TokenQueue for Pod: ", pi.PodName, " Total Token : ", pi.TokenQueue, " Token Reservation : ", pi.TokenReservation)
+	klog.V(10).Info(pi.PodName, " 's TokenQueue is updated to ", pi.TokenQueue, " with Token Reservation : ", pi.TokenReservation)
 }
 
-// Caclulate Dynamic Weight for each resource in the pod
+/*
+Func Name : (pi *PodInfo) UpdateDynamicWeight(staticV float64)
+	Objective :
+	1) Update DynamicWeight
+*/
 func (pi *PodInfo) UpdateDynamicWeight(staticV float64) {
 
 	if staticV > 0 {
@@ -245,13 +256,48 @@ func (pi *PodInfo) SetInitLimit() {
 	}
 }
 
-func (pi *PodInfo) SetLimit(cpuLimit, gpuLimit float64) {
-	klog.V(5).Info("SetLimit ", pi.PodName, " CPU: ", cpuLimit, ", GPU: ", gpuLimit)
-	if pi.RIs["CPU"].Limit() == cpuLimit && pi.RIs["GPU"].Limit() == gpuLimit {
+func (pi *PodInfo) setNextLimit() {
+
+	for _, ri := range pi.RIs {
+		if ri.nextLimit < 10 {
+			ri.nextLimit = 10
+		}
+		ri.SetLimit(ri.nextLimit)
+	}
+	pi.UpdatedCount = pi.UpdatedCount + 1
+	pi.lastUpdatedTime = time.Now().UnixNano()
+	klog.V(4).Info(pi.PodName, "'s limits are set to : ", int64(pi.CPU().nextLimit), int64(pi.GPU().nextLimit))
+}
+
+func (pi *PodInfo) getNextLimit(remainedTimePerSecond float64) {
+
+	k := 0.
+	pi.availableToken = k*pi.TokenQueue + pi.TokenReservation*remainedTimePerSecond
+
+	/*** Caclulate Next Limit wihtout Any Conditions ***/
+	cpuRI, gpuRI := pi.RIs["CPU"], pi.RIs["GPU"]
+	cpuNextLimit := cpuRI.usage + cpuRI.price*pi.availableToken/(2*cpuRI.dynamicWeight)
+	gpuNextLimit := gpuRI.usage + gpuRI.price*pi.availableToken/(2*gpuRI.dynamicWeight)
+
+	tokenCondition := pi.availableToken - (cpuRI.price*cpuNextLimit+gpuRI.price*gpuNextLimit)*remainedTimePerSecond
+
+	if tokenCondition >= 0 {
+		klog.V(10).Info(pi.PodName, "'s Next Reseravation :", int64(cpuNextLimit), " , ", int64(gpuNextLimit), " Token Enough : tokenCondition : ", int64(tokenCondition))
+		pi.CPU().nextLimit = cpuNextLimit
+		pi.GPU().nextLimit = gpuNextLimit
 		return
 	}
-	pi.RIs["CPU"].SetLimit(cpuLimit)
-	pi.RIs["GPU"].SetLimit(gpuLimit)
-	pi.UpdatedCount = pi.UpdatedCount + 1
-	// pi.lastUpdatedTime = time.Now().UnixNano()
+
+	/*** Caclulate Next Limit wiht Token Conditions ***/
+	up := pi.availableToken/remainedTimePerSecond - cpuRI.price*cpuRI.usage - gpuRI.price*gpuRI.usage
+	below := gpuRI.dynamicWeight*cpuRI.price*cpuRI.price + cpuRI.dynamicWeight*gpuRI.price*gpuRI.price
+	cpuNextLimit = cpuRI.usage + cpuRI.price*gpuRI.dynamicWeight*up/below
+	gpuNextLimit = gpuRI.usage + gpuRI.price*cpuRI.dynamicWeight*up/below
+	tokenCondition = pi.availableToken - (cpuRI.price*cpuNextLimit+gpuRI.price*gpuNextLimit)*remainedTimePerSecond
+
+	klog.V(10).Info(pi.PodName, "'s Next Reseravation :", int64(cpuNextLimit), " , ", int64(gpuNextLimit), " Token Enough : tokenCondition : ", int64(tokenCondition))
+
+	pi.CPU().nextLimit = cpuNextLimit
+	pi.GPU().nextLimit = gpuNextLimit
+	return
 }
