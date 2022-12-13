@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: test4
+  name: test5
 spec:
   template:
     spec:
@@ -10,7 +10,7 @@ spec:
       containers:
       # - image: docker.io/guswns531/jobs:yolov5-flask-004
       - image: docker.io/guswns531/jobs:matrix-004
-        name: test4
+        name: test5
         # command:  ["/bin/bash", "-c", "python", "restapi.py", "--port=5000"]
         # command:  ["sleep", "50000"]
         command:  ["./time", "./matrix", "2048", "4000"]

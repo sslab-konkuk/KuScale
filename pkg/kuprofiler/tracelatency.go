@@ -12,12 +12,14 @@ import (
 var li *LatencyInfo
 
 type latencyData_st struct {
-	name     string
-	duration []float64
+	name      string
+	startTime int64
+	duration  []float64
 }
 
 type LatencyInfo struct {
 	enableFlag  bool
+	initTime    int64
 	latencyData map[string]latencyData_st
 }
 
@@ -28,7 +30,9 @@ func NewLatencyInfo(flag bool) {
 		klog.V(4)
 	}
 	li = &LatencyInfo{enableFlag: flag,
-		latencyData: make(map[string]latencyData_st)}
+		latencyData: make(map[string]latencyData_st),
+		initTime:    time.Now().UnixNano(),
+	}
 }
 
 func StartTime() int64 {
@@ -51,8 +55,45 @@ func Record(funcName string, startTime int64) {
 	}
 
 	elapsedTime := float64(current - startTime)
-	klog.V(4).Info("Record ", funcName, " : ", startTime, ": ", elapsedTime)
+	klog.V(5).Info("Record ", funcName, " : ", startTime-li.initTime, ": ", elapsedTime)
 	latencyData.duration = append(latencyData.duration, elapsedTime)
+	li.latencyData[funcName] = latencyData
+	return
+}
+
+func RecordStart(funcName string) {
+	if !li.enableFlag {
+		return
+	}
+	current := time.Now().UnixNano()
+
+	latencyData, ok := li.latencyData[funcName]
+	if !ok {
+		latencyData = latencyData_st{name: funcName, duration: make([]float64, 0)}
+	}
+	latencyData.startTime = current
+	klog.V(5).Info("RecordStart", funcName, " : ", latencyData.startTime)
+	li.latencyData[funcName] = latencyData
+	return
+}
+
+func RecordEnd(funcName string) {
+	if !li.enableFlag {
+		return
+	}
+	current := time.Now().UnixNano()
+
+	latencyData, ok := li.latencyData[funcName]
+	if !ok {
+		latencyData = latencyData_st{name: funcName, duration: make([]float64, 0)}
+	}
+	if latencyData.startTime == 0 {
+		return
+	}
+	elapsedTime := float64(current - latencyData.startTime)
+	klog.V(5).Info("RecordEnd ", funcName, ": ", elapsedTime)
+	latencyData.duration = append(latencyData.duration, elapsedTime)
+	latencyData.startTime = 0
 	li.latencyData[funcName] = latencyData
 	return
 }
@@ -67,5 +108,12 @@ func Summary() {
 		_ = hist.Fprintf(os.Stdout, histdata, hist.Linear(50), func(v float64) string {
 			return time.Duration(v).String()
 		})
+
+		sum := 0.
+		for _, duration := range data.duration {
+			sum += duration
+		}
+		fmt.Fprintln(os.Stdout, name, "Average :", time.Duration(sum/float64(len(data.duration))).String())
+		fmt.Fprintln(os.Stdout, data)
 	}
 }

@@ -53,7 +53,7 @@ func init() {
 
 	flag.BoolVar(&monitoringMode, "MonitoringMode", false, "MonitoringMode")
 	flag.BoolVar(&exporterMode, "exporterMode", false, "exporterMode")
-	flag.BoolVar(&bpfwatcherMode, "bpfwatcherMode", false, "bpfwatcherMode")
+	flag.BoolVar(&bpfwatcherMode, "bpfwatcherMode", true, "bpfwatcherMode")
 
 	flag.Float64Var(&staticV, "staticV", 10, "Static V Weight")
 }
@@ -72,7 +72,7 @@ func main() {
 	go kuwatcher.PodWatcher(stopCh, tokenReqCh, newPodCh)
 
 	// Run Ku BPF Watcher
-	ebpfCh := make(chan string)
+	ebpfCh := make(chan string, 1000)
 	if bpfwatcherMode {
 		go kuwatcher.BpfWatcher(ebpfCh, stopCh)
 	}

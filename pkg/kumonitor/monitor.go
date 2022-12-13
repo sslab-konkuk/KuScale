@@ -106,11 +106,13 @@ func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 		podInfo.RIs["CPU"].path, podInfo.RIs["GPU"].path, _ = m.getPath(podName)
 		if CheckPodPath(podInfo) {
 			klog.V(5).Info("Ready and Start", podName)
+			podInfo.CPU().usagePath = podInfo.CPU().path + "/cpuacct.usage"
+			podInfo.GPU().usagePath = podInfo.GPU().path + "/total_runtime"
 			docker := strings.Split(podInfo.RIs["CPU"].path, "/")
 			podInfo.dockerID = strings.Split(docker[len(docker)-1], "-")[1][:12]
 			klog.V(1).Info("New Pod : docker ID : ", podInfo.dockerID)
 			podInfo.SetInitLimit()
-			podInfo.InitUpdateUsage()
+			podInfo.UpdatePodUsage()
 			m.RunningPodMap[podName] = podInfo
 			return
 		}
@@ -120,12 +122,13 @@ func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 
 /*
 Func Name : MontiorAllPods()
-Objective : 1) Monitoring the pods in RunningPodMap
-			2) Check and Remove Completed Pods
+	Objective :
+	1) Monitoring the pods in RunningPodMap
+	2) Check and Remove Completed Pods
 */
 func (m *Monitor) MontiorAllPods() {
-	startTime := kuprofiler.StartTime()
-	defer kuprofiler.Record("MontiorAllPods", startTime)
+	// startTime := kuprofiler.StartTime()
+	// defer kuprofiler.Record("MontiorAllPods", startTime)
 
 	rpmLen := len(m.RunningPodMap)
 	monitorCh := make(chan *PodInfo, rpmLen)
@@ -137,7 +140,7 @@ func (m *Monitor) MontiorAllPods() {
 				klog.V(10).Info("Completed ", pi.PodName)
 				pi.status = PodCompleted
 			} else {
-				pi.UpdateUsage()
+				pi.UpdatePodUsage()
 				if pi.status == PodInitializing {
 					pi.status = PodRunning
 				}
@@ -150,44 +153,73 @@ func (m *Monitor) MontiorAllPods() {
 	for i := 0; i < rpmLen; i++ {
 		pi := <-monitorCh
 		if pi.status == PodCompleted {
+			startTime := kuprofiler.StartTime()
 			delete(m.RunningPodMap, pi.PodName)
 			m.CompletedPodMap[pi.PodName] = pi
+			defer kuprofiler.Record("PodCompleted", startTime)
 		} else {
 			m.RunningPodMap[pi.PodName] = pi
 		}
 	}
 }
 
-func (m *Monitor) Monitoring(stopCh, ebpfCh, newPodCh chan string) {
-	klog.V(5).Info("Monitoring Start")
-	timerCh := time.Tick(time.Second * time.Duration(m.config.monitoringPeriod))
-	for {
-		select {
-		case <-stopCh:
-			return
-		case podName := <-newPodCh:
-			klog.V(10).Info("Get New PodCh : ", podName)
-			go m.UpdateNewPod(podName, 300, 10)
-		case <-ebpfCh:
-			lastExpiredTime := time.Now().UnixNano()
-			klog.V(10).Info("AutoScaling By EBPF")
-			// pi := m.FindPodNameById(dockerId)
-			// if pi != nil {
-			// 	pi.
-			// }
-			m.MontiorAllPods()
-			m.Autoscale()
-			m.lastUpdatedTime = lastExpiredTime
-		case timeTick := <-timerCh:
-			m.lastExpiredTime = timeTick.UnixNano()
-			if len(m.RunningPodMap) == 0 {
-				continue
-			}
-			m.MontiorAllPods()
-			m.Autoscale()
-			m.lastUpdatedTime = m.lastExpiredTime
+/*
+Func Name : MonitorPod(pi *PodInfo)
+	Objective :
+	1) Monitoring the pods in RunningPodMap
+	2) Check and Remove Completed Pods
+*/
+func updatePod(pi *PodInfo) {
+	if pi.status == PodInitializing {
+		pi.status = PodRunning
+	}
+	pi.lastElaspedTime = float64(time.Now().UnixNano()-pi.lastUpdatedTime) / 1000000000.
+	pi.UpdatePodUsage()
+	pi.UpdateTokenQueue()
+}
+
+/*
+Func Name : MonitorAndAutoScale()
+	Objective :
+	1) Monitoring the pods in RunningPodMap
+	2) Check and Remove Completed Pods
+*/
+func (m *Monitor) MonitorAndAutoScale() {
+	// startTime := kuprofiler.StartTime()
+	// defer kuprofiler.Record("MonitorAndAutoScale", startTime)
+
+	/* Return If there is no pods in RunningPodMap */
+	if len(m.RunningPodMap) == 0 {
+		return
+	}
+	/* Monitor and Update Pod */
+	for _, pi := range m.RunningPodMap {
+		updatePod(pi)
+		if pi.status == PodCompleted {
+			delete(m.RunningPodMap, pi.PodName)
+			m.CompletedPodMap[pi.PodName] = pi
+		} else {
+			m.RunningPodMap[pi.PodName] = pi
 		}
 	}
+
+	/* Get Next Limit in Simple conditions */
+	for _, pi := range m.RunningPodMap {
+		pi.UpdateDynamicWeight(m.staticV)
+		pi.getNextLimit(float64(m.config.monitoringPeriod))
+		pi.setNextLimit()
+		m.RunningPodMap[pi.PodName] = pi
+	}
+
+	// matrixInfo, matrix := makeMatrix(m.RunningPodMap)
+	// if matrixInfo.nmOfPods == 0 {
+	// 	klog.V(4).Info("matrixInfo.nmOfPods is Zero")
+	// 	return
+	// }
+	// m.fill(matrixInfo, matrix)
+	// result, _ := gaussJordan(matrix, matrixInfo.totalColumnSize, matrixInfo.totalRowSize)
+	// klog.V(10).Info("Result = ", result)
+	// m.updatePodInfo(matrixInfo, result)
 }
 
 func (m *Monitor) Run(stopCh, ebpfCh, newPodCh chan string) {
@@ -195,8 +227,22 @@ func (m *Monitor) Run(stopCh, ebpfCh, newPodCh chan string) {
 	m.ConnectDocker()
 
 	klog.V(4).Info("Starting Monitor")
-	go m.Monitoring(stopCh, ebpfCh, newPodCh)
-	klog.V(4).Info("Started Monitor")
-	<-stopCh
-	klog.V(4).Info("Shutting monitor down")
+	timerCh := time.Tick(time.Second * time.Duration(m.config.monitoringPeriod))
+	for {
+		select {
+		case <-stopCh:
+			klog.V(4).Info("Shutting monitor down")
+			return
+		case podName := <-newPodCh:
+			klog.V(10).Info("Get New PodCh : ", podName)
+			go m.UpdateNewPod(podName, 300, 10)
+		case <-ebpfCh:
+			klog.V(10).Info("MonitorAndAutoScale By EBPF")
+			m.MonitorAndAutoScale()
+			kuprofiler.RecordEnd("SchedulingLatency")
+		case <-timerCh:
+			klog.V(10).Info("MonitorAndAutoScale By Timer")
+			m.MonitorAndAutoScale()
+		}
+	}
 }
