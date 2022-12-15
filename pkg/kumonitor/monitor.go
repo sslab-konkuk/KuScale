@@ -88,6 +88,9 @@ func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 	if podName == "" {
 		return
 	}
+	startTime := kuprofiler.StartTime()
+	defer kuprofiler.Record("UpdateNewPod", startTime)
+
 	// Check This Pod is Not in RunningPodMap
 	if _, ok := m.RunningPodMap[podName]; ok {
 		klog.V(4).Info("No Need to Update Live Pod ", podName)
@@ -121,49 +124,6 @@ func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
 }
 
 /*
-Func Name : MontiorAllPods()
-	Objective :
-	1) Monitoring the pods in RunningPodMap
-	2) Check and Remove Completed Pods
-*/
-func (m *Monitor) MontiorAllPods() {
-	// startTime := kuprofiler.StartTime()
-	// defer kuprofiler.Record("MontiorAllPods", startTime)
-
-	rpmLen := len(m.RunningPodMap)
-	monitorCh := make(chan *PodInfo, rpmLen)
-
-	for _, pi := range m.RunningPodMap {
-		go func(pi *PodInfo, mch chan *PodInfo) {
-
-			if !CheckPodPath(pi) {
-				klog.V(10).Info("Completed ", pi.PodName)
-				pi.status = PodCompleted
-			} else {
-				pi.UpdatePodUsage()
-				if pi.status == PodInitializing {
-					pi.status = PodRunning
-				}
-				klog.V(10).Info("Usage ", pi.PodName, " ", pi.RIs["CPU"].Usage(), pi.RIs["GPU"].Usage())
-			}
-			mch <- pi
-		}(pi, monitorCh)
-	}
-
-	for i := 0; i < rpmLen; i++ {
-		pi := <-monitorCh
-		if pi.status == PodCompleted {
-			startTime := kuprofiler.StartTime()
-			delete(m.RunningPodMap, pi.PodName)
-			m.CompletedPodMap[pi.PodName] = pi
-			defer kuprofiler.Record("PodCompleted", startTime)
-		} else {
-			m.RunningPodMap[pi.PodName] = pi
-		}
-	}
-}
-
-/*
 Func Name : MonitorPod(pi *PodInfo)
 	Objective :
 	1) Monitoring the pods in RunningPodMap
@@ -185,8 +145,8 @@ Func Name : MonitorAndAutoScale()
 	2) Check and Remove Completed Pods
 */
 func (m *Monitor) MonitorAndAutoScale() {
-	// startTime := kuprofiler.StartTime()
-	// defer kuprofiler.Record("MonitorAndAutoScale", startTime)
+	startTime := kuprofiler.StartTime()
+	defer kuprofiler.Record("MonitorAndAutoScale", startTime)
 
 	/* Return If there is no pods in RunningPodMap */
 	if len(m.RunningPodMap) == 0 {

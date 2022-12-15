@@ -114,6 +114,6 @@ func Summary() {
 			sum += duration
 		}
 		fmt.Fprintln(os.Stdout, name, "Average :", time.Duration(sum/float64(len(data.duration))).String())
-		fmt.Fprintln(os.Stdout, data)
+		// fmt.Fprintln(os.Stdout, data)
 	}
 }
