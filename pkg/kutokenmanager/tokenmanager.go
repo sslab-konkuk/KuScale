@@ -23,7 +23,7 @@ type KuTokenManager struct {
 	totalIDs                   int
 	server                     *grpc.Server
 	stop                       chan interface{}
-	tokenReqCh                 chan string
+	newPodCh                   chan string
 	health                     chan string
 	healthCheckIntervalSeconds time.Duration
 }
@@ -143,12 +143,12 @@ func (ktm *KuTokenManager) Start() error {
 	return nil
 }
 
-func (ktm *KuTokenManager) Run(stopCh, tokenReqCh chan string) {
+func (ktm *KuTokenManager) Run(stopCh, newPodCh chan string) {
 
 	InsmodGpuMod()
 
 	ktm.stop = make(chan interface{})
-	ktm.tokenReqCh = tokenReqCh
+	ktm.newPodCh = newPodCh
 
 	err := ktm.Start()
 	if err != nil {
@@ -240,17 +240,20 @@ func (ktm *KuTokenManager) Allocate(ctx context.Context, reqs *pluginapi.Allocat
 	/* Enable GPU Module */
 	CreateGPUID(fmt.Sprintf("%d", ktm.totalIDs))
 
+	var tokenRes int
 	responses := pluginapi.AllocateResponse{}
+	vgpuId := ktm.totalIDs
 
 	for _, req := range reqs.ContainerRequests {
-		klog.V(4).Infof("Allocate %d %s resource to ID : %d", len(req.DevicesIDs), ktm.tokenName, ktm.totalIDs)
+		tokenRes = len(req.DevicesIDs)
+		klog.V(4).Infof("Allocate %d %s resource to ID : %d", tokenRes, ktm.tokenName, vgpuId)
 		responses.ContainerResponses = append(responses.ContainerResponses,
 			&pluginapi.ContainerAllocateResponse{
 				Envs: map[string]string{
 					"LD_PRELOAD":        "/kubeshare/library/libgemhook.so.1",
 					"LD_LIBRARY_PATH":   "/kubeshare/library/:$LD_LIBRARY_PATH",
 					"GEMINI_IPC_DIR":    "/kubeshare/scheduler/ipc/",
-					"GEMINI_GROUP_NAME": fmt.Sprintf("%d", ktm.totalIDs),
+					"GEMINI_GROUP_NAME": fmt.Sprintf("%d", vgpuId),
 				},
 				Mounts: []*pluginapi.Mount{
 					{
@@ -259,13 +262,17 @@ func (ktm *KuTokenManager) Allocate(ctx context.Context, reqs *pluginapi.Allocat
 					},
 					{
 						ContainerPath: "/ku-gpu", //TODO: Need to change it the specific path
-						HostPath:      fmt.Sprintf("/sys/kernel/gpu/IDs/%d", ktm.totalIDs),
+						HostPath:      fmt.Sprintf("/sys/kernel/gpu/IDs/%d", vgpuId),
 					},
+				},
+				Annotations: map[string]string{
+					"kuauto.token": fmt.Sprintf("%d", tokenRes),
+					"kuauto.vgpu":  fmt.Sprintf("%d", vgpuId),
 				},
 			},
 		)
 	}
-	ktm.tokenReqCh <- fmt.Sprintf("%d", ktm.totalIDs)
+	ktm.newPodCh <- fmt.Sprintf("%d:%d", vgpuId, tokenRes)
 	ktm.totalIDs = ktm.totalIDs + 1
 	return &responses, nil
 }

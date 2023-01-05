@@ -252,7 +252,7 @@ func (pi *PodInfo) UpdateDynamicWeight(staticV float64) {
 
 func (pi *PodInfo) SetInitLimit() {
 	for _, ri := range pi.RIs {
-		ri.SetLimit(ri.initLimit)
+		ri.SetLimit(10)
 	}
 }
 
