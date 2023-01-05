@@ -15,9 +15,12 @@ package kumonitor
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/sslab-konkuk/KuScale/pkg/kuprofiler"
 	"k8s.io/klog"
@@ -34,10 +37,10 @@ type PodInfoMap map[string]*PodInfo
 type PodIDtoNameMap map[string]string
 
 type Monitor struct {
-	ctx     context.Context
-	cli     *client.Client
 	config  Configuraion
 	staticV float64
+	ctx     context.Context
+	cli     *client.Client
 
 	RunningPodMap   PodInfoMap
 	CompletedPodMap PodInfoMap
@@ -62,7 +65,64 @@ func NewMonitor(
 		podIDtoNameMap:  make(PodIDtoNameMap),
 		staticV:         staticV}
 
+	var err error
+	monitor.ctx = context.Background()
+	monitor.cli, err = client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		panic(err)
+	}
 	return monitor
+}
+
+/*
+Func Name : waitContainerStart()
+Objective : 1) Wait for new container with vgpuId
+			2) Get the information about the new container such as podName, cpuPath, gpuPath
+*/
+func (m *Monitor) waitContainerStart(vgpuId string) (string, string, string, string) {
+
+	var containers []types.Container
+	var err error
+
+	filter := "annotation.kuauto.vgpu=" + vgpuId
+	filters := filters.NewArgs()
+	filters.Add("label", filter)
+
+	klog.V(10).Info("waitContainerStart vgpuId : ", vgpuId)
+
+	for {
+		containers, err = m.cli.ContainerList(m.ctx, types.ContainerListOptions{Filters: filters})
+		if err != nil {
+			panic(err) // TODO: erorr handling
+		}
+		if len(containers) != 0 {
+			break
+		}
+	}
+
+	klog.V(5).Info("Found the new container with vgpu ", vgpuId)
+	data, err := m.cli.ContainerInspect(m.ctx, containers[0].ID)
+
+	if err != nil {
+		panic(err)
+	}
+
+	var podName, cpuPath, gpuPath, dockerId string
+
+	for label, value := range data.Config.Labels {
+		if label == "io.kubernetes.pod.name" {
+			podName = value
+			break
+		}
+	}
+
+	cpuPath = "/home/cgroup/cpu/kubepods.slice/kubepods-besteffort.slice/" + data.HostConfig.CgroupParent + "/docker-" + containers[0].ID + ".scope"
+	gpuPath = "/sys/kernel/gpu/IDs/" + vgpuId
+	dockerId = containers[0].ID[:12]
+
+	klog.V(5).Info("Cgroup Path:", cpuPath, ",  gpuPath : ", gpuPath)
+
+	return podName, cpuPath, gpuPath, dockerId
 }
 
 /*
@@ -75,7 +135,6 @@ func (m *Monitor) FindPodNameById(id string) *PodInfo {
 			return pi
 		}
 	}
-
 	return nil
 }
 
@@ -84,43 +143,32 @@ Func Name : UpdateNewPod()
 Objective : 1) Initalize New Pod
 			2) Pulling and Wait for New Pod
 */
-func (m *Monitor) UpdateNewPod(podName string, cpuLimit, gpuLimit float64) {
-	if podName == "" {
-		return
-	}
+func (m *Monitor) UpdateNewPod(vgpuNToken string) {
 	startTime := kuprofiler.StartTime()
 	defer kuprofiler.Record("UpdateNewPod", startTime)
 
-	// Check This Pod is Not in RunningPodMap
-	if _, ok := m.RunningPodMap[podName]; ok {
-		klog.V(4).Info("No Need to Update Live Pod ", podName)
-		return
-	}
+	data := strings.Split(vgpuNToken, ":")
+	tokenRes, _ := strconv.ParseFloat(data[1], 64)
+	vgpuId := data[0]
+
+	podName, cpuPath, gpuPath, dockerId := m.waitContainerStart(vgpuId)
 
 	// Prepare The Pod Info Structure
 	podInfo := NewPodInfo(podName, []ResourceName{"CPU", "GPU"})
-	podInfo.RIs["CPU"].initLimit = cpuLimit
-	podInfo.RIs["GPU"].initLimit = gpuLimit
-	podInfo.TokenReservation = 2*cpuLimit + 6*gpuLimit
-	podInfo.TokenQueue = 0 // podInfo.TokenReservation / 2
+	podInfo.dockerID = dockerId
+	podInfo.TokenReservation = tokenRes
+	podInfo.TokenQueue = 0
 
-	// Wait for The New Pod to Prepare the Cgroup
-	for {
-		podInfo.RIs["CPU"].path, podInfo.RIs["GPU"].path, _ = m.getPath(podName)
-		if CheckPodPath(podInfo) {
-			klog.V(5).Info("Ready and Start", podName)
-			podInfo.CPU().usagePath = podInfo.CPU().path + "/cpuacct.usage"
-			podInfo.GPU().usagePath = podInfo.GPU().path + "/total_runtime"
-			docker := strings.Split(podInfo.RIs["CPU"].path, "/")
-			podInfo.dockerID = strings.Split(docker[len(docker)-1], "-")[1][:12]
-			klog.V(1).Info("New Pod : docker ID : ", podInfo.dockerID)
-			podInfo.SetInitLimit()
-			podInfo.UpdatePodUsage()
-			m.RunningPodMap[podName] = podInfo
-			return
-		}
-		klog.V(10).Info("Not Ready because no Path ", podName)
-	}
+	podInfo.RIs["CPU"].path, podInfo.RIs["GPU"].path = cpuPath, gpuPath
+	podInfo.CPU().usagePath = podInfo.CPU().path + "/cpuacct.usage"
+	podInfo.GPU().usagePath = podInfo.GPU().path + "/total_runtime"
+
+	podInfo.SetInitLimit()
+	podInfo.UpdatePodUsage()
+	podInfo.UpdatePodUsage()
+
+	klog.V(5).Info("Ready and Start", podName)
+	m.RunningPodMap[podName] = podInfo
 }
 
 /*
@@ -184,8 +232,6 @@ func (m *Monitor) MonitorAndAutoScale() {
 
 func (m *Monitor) Run(stopCh, ebpfCh, newPodCh chan string) {
 
-	m.ConnectDocker()
-
 	klog.V(4).Info("Starting Monitor")
 	timerCh := time.Tick(time.Second * time.Duration(m.config.monitoringPeriod))
 	for {
@@ -193,9 +239,9 @@ func (m *Monitor) Run(stopCh, ebpfCh, newPodCh chan string) {
 		case <-stopCh:
 			klog.V(4).Info("Shutting monitor down")
 			return
-		case podName := <-newPodCh:
-			klog.V(10).Info("Get New PodCh : ", podName)
-			go m.UpdateNewPod(podName, 300, 10)
+		case vgpuNToken := <-newPodCh:
+			klog.V(10).Info("Get New PodCh : ", vgpuNToken)
+			go m.UpdateNewPod(vgpuNToken)
 		case <-ebpfCh:
 			klog.V(10).Info("MonitorAndAutoScale By EBPF")
 			m.MonitorAndAutoScale()

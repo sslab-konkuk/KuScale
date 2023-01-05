@@ -14,10 +14,10 @@ spec:
         name: test3
         # command:  ["/bin/bash", "-c", "python", "restapi.py", "--port=5000"]
         # command:  ["sleep", "50000"]
-        command:  ["./time", "./matrix", "2048", "4000"]
+        command:  ["./time", "./matrix", "2048", "400"]
         resources:
           limits:
-            kuscale.com/token: 1
+            kuscale.com/token: 600
         volumeMounts:
           - name: shmdir
             mountPath: /dev/shm             

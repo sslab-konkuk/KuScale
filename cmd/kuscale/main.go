@@ -52,7 +52,7 @@ func init() {
 	flag.Int64Var(&windowSize, "WindowSize", 15, "WindowSize")
 
 	flag.BoolVar(&monitoringMode, "MonitoringMode", false, "MonitoringMode")
-	flag.BoolVar(&exporterMode, "exporterMode", false, "exporterMode")
+	flag.BoolVar(&exporterMode, "exporterMode", true, "exporterMode")
 	flag.BoolVar(&bpfwatcherMode, "bpfwatcherMode", true, "bpfwatcherMode")
 
 	flag.Float64Var(&staticV, "staticV", 10, "Static V Weight")
@@ -62,14 +62,10 @@ func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
 	kuprofiler.NewLatencyInfo(true)
-	tokenReqCh := make(chan string, 10)
 	newPodCh := make(chan string, 10)
 
 	/* Run Signal Watcher */
 	stopCh := kuwatcher.SignalWatcher()
-
-	/* Run Ku Pod Watcher */
-	go kuwatcher.PodWatcher(stopCh, tokenReqCh, newPodCh)
 
 	// Run Ku BPF Watcher
 	ebpfCh := make(chan string, 1000)
@@ -88,9 +84,9 @@ func main() {
 
 	// Run KU Device Plugin
 	tokenManager := kutokenmanager.NewKuTokenManager(
-		"kuscale.com/token", 10,
+		"kuscale.com/token", 6000,
 		pluginapi.DevicePluginPath+"dorry-token.sock")
-	go tokenManager.Run(stopCh, tokenReqCh)
+	go tokenManager.Run(stopCh, newPodCh)
 
 	klog.V(4).Info("Started Kuscale")
 	<-stopCh
