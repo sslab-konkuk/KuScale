@@ -51,9 +51,9 @@ func init() {
 	flag.Int64Var(&monitoringPeriod, "MonitoringPeriod", 2, "MonitoringPeriod")
 	flag.Int64Var(&windowSize, "WindowSize", 15, "WindowSize")
 
-	flag.BoolVar(&monitoringMode, "MonitoringMode", false, "MonitoringMode")
+	flag.BoolVar(&monitoringMode, "MonitoringMode", true, "MonitoringMode")
 	flag.BoolVar(&exporterMode, "exporterMode", true, "exporterMode")
-	flag.BoolVar(&bpfwatcherMode, "bpfwatcherMode", true, "bpfwatcherMode")
+	flag.BoolVar(&bpfwatcherMode, "bpfwatcherMode", false, "bpfwatcherMode")
 
 	flag.Float64Var(&staticV, "staticV", 10, "Static V Weight")
 }
@@ -61,7 +61,7 @@ func init() {
 func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
-	kuprofiler.NewLatencyInfo(true)
+	kuprofiler.NewLatencyInfo(false)
 	newPodCh := make(chan string, 10)
 
 	/* Run Signal Watcher */

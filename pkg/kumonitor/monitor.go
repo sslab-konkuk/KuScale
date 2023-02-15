@@ -116,7 +116,8 @@ func (m *Monitor) waitContainerStart(vgpuId string) (string, string, string, str
 		}
 	}
 
-	cpuPath = "/home/cgroup/cpu/kubepods.slice/kubepods-besteffort.slice/" + data.HostConfig.CgroupParent + "/docker-" + containers[0].ID + ".scope"
+	// cpuPath = "/home/cgroup/cpu/kubepods.slice/kubepods-besteffort.slice/" + data.HostConfig.CgroupParent + "/docker-" + containers[0].ID + ".scope"
+	cpuPath = "/home/cgroup/kubepods.slice/kubepods-besteffort.slice/" + data.HostConfig.CgroupParent + "/docker-" + containers[0].ID + ".scope"
 	gpuPath = "/sys/kernel/gpu/IDs/" + vgpuId
 	dockerId = containers[0].ID[:12]
 
@@ -163,7 +164,9 @@ func (m *Monitor) UpdateNewPod(vgpuNToken string) {
 	podInfo.CPU().usagePath = podInfo.CPU().path + "/cpuacct.usage"
 	podInfo.GPU().usagePath = podInfo.GPU().path + "/total_runtime"
 
-	podInfo.SetInitLimit()
+	if !m.config.monitoringMode  {
+		podInfo.SetInitLimit()
+	}
 	podInfo.UpdatePodUsage()
 	podInfo.UpdatePodUsage()
 
@@ -211,12 +214,14 @@ func (m *Monitor) MonitorAndAutoScale() {
 		}
 	}
 
-	/* Get Next Limit in Simple conditions */
-	for _, pi := range m.RunningPodMap {
-		pi.UpdateDynamicWeight(m.staticV)
-		pi.getNextLimit(float64(m.config.monitoringPeriod))
-		pi.setNextLimit()
-		m.RunningPodMap[pi.PodName] = pi
+	if !m.config.monitoringMode  {
+		/* Get Next Limit in Simple conditions */
+		for _, pi := range m.RunningPodMap {
+			pi.UpdateDynamicWeight(m.staticV)
+			pi.getNextLimit(float64(m.config.monitoringPeriod))
+			pi.setNextLimit()
+			m.RunningPodMap[pi.PodName] = pi
+		}
 	}
 
 	// matrixInfo, matrix := makeMatrix(m.RunningPodMap)

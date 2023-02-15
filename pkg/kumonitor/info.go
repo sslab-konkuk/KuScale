@@ -89,10 +89,21 @@ Func Name : (ri *ResourceInfo) updateUsage() bool
 func (ri *ResourceInfo) updateUsage() bool {
 
 	timeStamp := uint64(time.Now().UnixNano())
-	acctUsage, completed := GetFileUint(ri.usagePath)
-	if completed {
-		return true
+	var acctUsage uint64
+	var completed bool
+	switch ri.name {
+	case "CPU":
+		acctUsage, completed = ReadCPUStat(ri.path)
+		if completed {
+			return true
+		}
+	case "GPU":
+		acctUsage, completed = GetFileUint(ri.usagePath)
+		if completed {
+			return true
+		}
 	}
+	
 	prev := ri.acctUsageAndTime[len(ri.acctUsageAndTime)-1]
 
 	ri.usage = float64(acctUsage-prev.acctUsage) * 100. / float64(timeStamp-prev.timeStamp)

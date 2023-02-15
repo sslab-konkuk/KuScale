@@ -45,11 +45,16 @@ spec:
     type: RollingUpdate
   template:
     metadata:
-      annotations:
-        scheduler.alpha.kubernetes.io/critical-pod: ""
       labels:
         name: kuscale-ds
     spec:
+      nodeSelector:
+        type: gpu
+      tolerations:
+      - key: worker
+        value: gpu
+        operator: Equal
+        effect: NoExecute
       serviceAccountName: kuscale
       hostNetwork: true  
       # serviceAccount: kuscale
@@ -86,7 +91,7 @@ spec:
             mountPath: /lib/modules
           - name: host-proc
             mountPath: /home/proc
-          - name: kuscale
+          - name: kuscale-nfs
             mountPath: /KuScale
         env:
           - name: NODE_NAME
@@ -125,8 +130,7 @@ spec:
           hostPath:
             type: Directory
             path: /proc
-        - name: kuscale
-          hostPath:
-            type: Directory
-            path: /home/sslab/KuScale
+        - name: kuscale-nfs
+          persistentVolumeClaim:
+            claimName: kuscale-pvc
         

@@ -34,6 +34,50 @@ func postive(x float64) float64 {
 	return x
 }
 
+// stat -fc %T /sys/fs/cgroup/
+
+func ReadCPUMax(cpuPath string) (uint64) {
+	var quota uint64
+	contents, err := ioutil.ReadFile(filepath.Join(cpuPath, "/cpu.max"))
+	if err != nil {
+		klog.V(2).Infof("couldn't ReadCPUMax: %s", err)
+		return 0
+	}
+	values := strings.Split(string(contents), " ")
+	if values[0] == "max" {
+		quota = 600000
+	} else {
+		quota = parseUint(values[0], 10, 64)
+	}
+	// period, _ := strconv.ParseUint(values[1], 10, 64)
+	return quota
+}
+
+func WriteCPUMax(cpuPath string, quota uint64) {
+	contents := strconv.FormatUint(quota, 10) + " 100000"
+	err := ioutil.WriteFile(filepath.Join(cpuPath, "/cpu.max"), []byte(contents), os.FileMode(0777))
+	if err != nil {
+		klog.Infof("%s %d %s", err, quota, cpuPath)
+	}
+}
+
+func ReadCPUStat(cpuPath string) (uint64, bool){
+	contents, err := ioutil.ReadFile(filepath.Join(cpuPath, "/cpu.stat"))
+	if err != nil {
+		klog.V(2).Infof("couldn't ReadCPUStat: %s", err)
+		return 0, true
+	}
+	lines := strings.Split(string(contents), "\n")
+	values := strings.Split(lines[0], " ")
+	if values[0] == "usage_usec" {
+		usage := parseUint(values[1], 10, 64)
+		return usage * 1000, false
+	} else {
+		klog.V(2).Infof("couldn't ReadCPUStat:")
+		return 0, true
+	}
+}
+
 func setFileUint(value uint64, path, file string) {
 	err := ioutil.WriteFile(filepath.Join(path, file), []byte(strconv.FormatUint(uint64(value), 10)), os.FileMode(0777))
 	if err != nil {
@@ -120,6 +164,7 @@ func GetCpuAcctUsage(cpuPath string) (uint64, uint64) {
 	now := uint64(time.Now().UnixNano())
 	// now, _ := GetMtime()
 	return GetFileParamUint(cpuPath, "/cpuacct.usage"), now
+	// return ReadCPUStat(cpuPath)*1000, now
 }
 
 func GetGpuAcctUsage(gpuPath string) (uint64, uint64) {

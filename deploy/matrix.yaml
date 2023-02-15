@@ -1,20 +1,24 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: test3
+  name: matrix
 spec:
   template:
     spec:
+      nodeSelector:
+        type1: gpu1
+      tolerations:
+      - key: worker
+        value: gpu
+        operator: Equal
+        effect: NoExecute
       hostIPC: true
       restartPolicy: Never
       containers:
-      # - image: docker.io/guswns531/jobs:yolov5-flask-004
       - image: docker.io/guswns531/jobs:matrix-004
-      # - image: nvcr.io/nvidia/pytorch:21.03-py3
-        name: test3
-        # command:  ["/bin/bash", "-c", "python", "restapi.py", "--port=5000"]
+        name: matrix
         # command:  ["sleep", "50000"]
-        command:  ["./time", "./matrix", "2048", "400"]
+        command:  ["./time", "./matrix", "2048", "4000"]
         resources:
           limits:
             kuscale.com/token: 600
